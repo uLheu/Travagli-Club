@@ -368,6 +368,8 @@ const hm = ts => new Date(ts).toTimeString().slice(0,5);
 const byNome = (a,b) => (a.letra||'Z').localeCompare(b.letra||'Z') || (a.nome||'').localeCompare(b.nome||'', 'pt-BR', {numeric:true});
 // letra fixa do treino (A, B, C...): não muda quando o nome muda
 const proximaLetra = () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[(S.fichaTreinos||[]).length] || '';
+// treinos antigos (sem letra) recebem a letra pela ordem de envio: o primeiro é A, depois B...
+const comLetra = arr => [...arr].sort((a,b) => (a.ts||0) - (b.ts||0)).map((t,i) => ({...t, letra: t.letra || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i] || ''}));
 const rotulo = t => (t.letra ? '('+t.letra+') ' : '') + (t.nome || 'Treino');
 const actLabel = k => actsOf(k).map(a => actIcon(a)+' '+a).join(' + ') + (k.min ? ' · '+k.min+' min' : '') + (k.km ? ' · '+k.km+' km' : '') + (k.ch ? ' · 🏆' : '');
 const ICON = {
@@ -463,7 +465,7 @@ async function boot(){
     }, onErr);
   } else {
     db.collection('treinos/'+S.me).onSnapshot(snap => {
-      S.assignedList = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byNome);
+      S.assignedList = comLetra(snap.docs.map(d => ({id:d.id, ...d.data()}))).sort(byNome);
       S.assigned = S.assignedList[0] || null;
       schedule();
     }, onErr);
@@ -1231,7 +1233,7 @@ function fichaView(){
     el('div',{class:'row', style:'gap:10px'}, el('div',{style:'flex:1'}, el('label',{text:'Início'}), ini), el('div',{style:'flex:1'}, el('label',{text:'Vencimento'}), fim)),
     el('div',{class:'mut', style:'margin-top:6px', text:'O vencimento é calculado sozinho: personal 4 semanas, consultoria 6 semanas. Dá para ajustar.'})));
   // treinos montados (caderno do aluno), em ordem A, B, C...
-  const trs = [...(S.fichaTreinos || [])].sort(byNome);
+  const trs = comLetra(S.fichaTreinos || []).sort(byNome);
   wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treinos no caderno do aluno'}),
     trs.length ? el('div',{}, ...trs.map(t => el('div',{class:'row', style:'margin-top:10px;align-items:center'},
         el('div',{style:'flex:1'}, el('div',{class:'nm', text:rotulo(t)}), el('div',{class:'mut', style:'font-size:12px', text:(t.itens||[]).length+' exercícios · enviado '+fmtDate(dstr(new Date(t.ts)))})),
