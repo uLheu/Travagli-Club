@@ -509,7 +509,8 @@ async function render(){
   else if (S.tab === 'progresso') view = progressView();
   else if (S.tab === 'acervo') view = acervoView();
   else if (S.tab === 'user') view = userView(S.viewUser);
-  const y = window.scrollY;
+  let y = window.scrollY;
+  if (S.restoreY != null){ y = S.restoreY; S.restoreY = null; }
   main.replaceChildren(view);
   window.scrollTo(0, y);
 }
@@ -1603,7 +1604,7 @@ function coachBlock(d, it, idx){
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
-      el('button',{class:'link', style:'margin-left:auto;font-size:13px', text:'trocar', onclick:() => { S.swapIdx = idx; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}),
+      el('button',{class:'link', style:'margin-left:auto;font-size:13px', text:'trocar', onclick:() => { S.retY = window.scrollY; S.swapIdx = idx; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}),
       el('button',{class:'link', style:'margin-left:14px;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
     uniBtn, trab, prep, desc, pr);
 }
@@ -1625,7 +1626,7 @@ function coachView(){
   wrap.append(el('div',{class:'chips', style:'margin-top:12px'}, el('button',{class:'chip', text:'📚 Carregar da biblioteca', onclick:() => { S.libMode = 'load'; go('biblio'); }})));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios. No caderno do aluno eles já aparecem escolhidos.'}));
   d.itens.forEach((it, idx) => wrap.append(coachBlock(d, it, idx)));
-  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => { S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}));
+  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => { S.retY = window.scrollY; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}));
   wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:10px', text:'Salvar na biblioteca', disabled: !d.itens.length, onclick: async () => {
     const data = {nome:(d.nome || '').trim() || 'Treino sem nome', pasta:(d.pasta || '').trim(), ts:Date.now(), itens:treinoItens(d.itens)};
     const ok = await w(() => S.db.doc('biblioteca/'+d.id).set(data), 'Salvo na biblioteca ✓');
@@ -1655,7 +1656,7 @@ function startLogFromAssigned(){
     const base = last ? Math.max(0, ...last.sets.map(x => +x.kg || 0)) : 0;
     return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, desc:i.desc, uni:i.uni, sets:[...prepSets(i.aq, i.ap, base), ...work]};
   })};
-  saveDraft(); go('logsess');
+  saveDraft(); go('logsess'); { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); }
 }
 function biblioView(){
   if (!S.isOwner){ go('logbook'); return el('div'); }
@@ -1776,7 +1777,7 @@ function logbookView(){
   const pend = (S.draft && S.draftKind !== 'coach') ? S.draft : loadDraft();
   if (pend && (pend.itens || []).length) wrap.append(el('button',{class:'btn', style:'margin:14px 0 0', text:'▶ Continuar treino em andamento', onclick:() => { S.draft = pend; S.draftKind = 'log'; go('logsess'); }}));
   if (S.isOwner){
-    wrap.append(el('button',{class:'btn ghost', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; saveDraft(); go('logsess'); }}));
+    wrap.append(el('button',{class:'btn ghost', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; saveDraft(); go('logsess'); { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } }}));
   } else if (S.assigned){
     wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
       el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
@@ -1922,7 +1923,7 @@ function sessionView(){
   wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série.'}));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
-  if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
+  if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => { S.retY = window.scrollY; go('logpick'); }}));
   wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !filled(), onclick: async () => {
     const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), ...(i.uni ? {uni:true} : {}), sets:i.sets.filter(s => s.r || s.kg).map(s => ({ ...(s.t ? {t:s.t} : {}),
       r: s.r === '' || s.r == null ? null : Number(s.r),
@@ -2024,12 +2025,12 @@ function addEx(id){
   if (S.draftKind === 'coach'){
     if (S.swapIdx != null && d.itens[S.swapIdx]){ d.itens[S.swapIdx] = {...d.itens[S.swapIdx], ex:id, nome:exNome(id)}; S.swapIdx = null; }
     else d.itens.push({ex:id, nome:exNome(id), prescr:'', aq:0, ap:0, desc:'', sr:0, rmin:0, rmax:0, uni:false});
-    S.pickQ = ''; S.pickG = 'Todos'; go('coach'); return;
+    S.pickQ = ''; S.pickG = 'Todos'; go('coach'); S.restoreY = null; { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } return;
   }
   const last = lastOf(id);
   d.itens.push({ex:id, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]});
   S.pickQ = ''; S.pickG = 'Todos';
-  saveDraft(); go('logsess');
+  saveDraft(); go('logsess'); { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); }
 }
 
 function pickerView(){
@@ -2053,7 +2054,7 @@ function pickerView(){
   };
   const grupos = ['Todos', ...new Set(exAll().map(e => e[2]))];
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
-    el('button',{class:'link', text:'← Voltar', onclick:() => { S.swapIdx = null; go(S.draftKind === 'coach' ? 'coach' : 'logsess'); }}),
+    el('button',{class:'link', text:'← Voltar', onclick:() => { S.swapIdx = null; const y = S.retY || 0; S.retY = null; go(S.draftKind === 'coach' ? 'coach' : 'logsess'); S.restoreY = y; render(); }}),
     el('h2',{text: S.swapIdx != null ? 'Trocar exercício' : 'Adicionar exercício', style:'margin:0'})));
   wrap.append(el('input',{type:'search', placeholder:'Buscar (ex.: supino inclinado)', value: S.pickQ || '', style:'width:100%;margin-top:12px', oninput: e => { S.pickQ = e.target.value; drawRes(); }}));
   wrap.append(el('div',{class:'chips', style:'margin-top:10px'}, ...grupos.map(g => el('button',{class:'chip'+((S.pickG||'Todos')===g?' on':''), text:g, onclick:() => { S.pickG = g; render(); }}))));
