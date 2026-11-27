@@ -245,21 +245,36 @@ function showLogin(){
   if (document.getElementById('lgBox')) return;
   const box = document.createElement('div');
   box.id = 'lgBox';
-  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#05070b;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,sans-serif;color:#eef3fb';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#05070b;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,sans-serif;color:#eef3fb;overflow:auto';
+  const inp = 'width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #1f2a38;background:#0d1219;color:#eef3fb;font-size:16px;margin-top:12px';
+  const btn = 'width:100%;margin-top:10px;padding:14px;border-radius:12px;border:0;background:#1f9fe3;color:#fff;font-weight:700;font-size:16px';
   box.innerHTML = '<div style="max-width:340px;width:100%;text-align:center">'
     + '<img src="icons/icon-512.png" alt="" style="width:110px;height:110px;border-radius:24px">'
     + '<h2 style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;margin:16px 0 6px">Entrar no Travagli Club</h2>'
-    + '<p style="color:#7f8ca0;font-size:14px;line-height:1.5">Digite o e-mail que o Léo usou para te convidar. Vamos mandar um link de acesso.</p>'
-    + '<input id="lgEmail" type="email" autocomplete="email" placeholder="seu@email.com" style="width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #1f2a38;background:#0d1219;color:#eef3fb;font-size:16px;margin-top:12px">'
-    + '<button id="lgBtn" style="width:100%;margin-top:10px;padding:14px;border-radius:12px;border:0;background:#1f9fe3;color:#fff;font-weight:700;font-size:16px">Receber link de acesso</button>'
+    + '<p style="color:#7f8ca0;font-size:14px;line-height:1.5">Digite o e-mail que o Léo usou para te convidar. Vamos mandar um código de 6 números.</p>'
+    + '<input id="lgEmail" type="email" autocomplete="email" placeholder="seu@email.com" style="' + inp + '">'
+    + '<button id="lgBtn" style="' + btn + '">Receber código</button>'
+    + '<div id="lgCodeWrap" style="display:none">'
+    +   '<input id="lgCode" inputmode="numeric" autocomplete="one-time-code" placeholder="código de 6 números" style="' + inp + ';text-align:center;letter-spacing:4px;font-size:22px">'
+    +   '<button id="lgVerify" style="' + btn + '">Entrar</button>'
+    + '</div>'
     + '<p id="lgMsg" style="font-size:14px;color:#7f8ca0;min-height:20px"></p></div>';
   document.body.appendChild(box);
-  box.querySelector('#lgBtn').onclick = async () => {
-    const email = box.querySelector('#lgEmail').value.trim();
-    const msg = box.querySelector('#lgMsg');
+  const $ = id => box.querySelector('#' + id);
+  $('lgBtn').onclick = async () => {
+    const email = $('lgEmail').value.trim();
     if (!email) return;
-    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
-    msg.textContent = error ? 'Erro: ' + (error.message || error.code || error.status || 'desconhecido') : 'Pronto! Confira seu e-mail e toque no link.';
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    if (error){ $('lgMsg').textContent = 'Erro: ' + (error.message || error.code || 'desconhecido'); return; }
+    $('lgCodeWrap').style.display = 'block';
+    $('lgMsg').textContent = 'Código enviado! Confira seu e-mail (e o spam).';
+  };
+  $('lgVerify').onclick = async () => {
+    const email = $('lgEmail').value.trim();
+    const token = $('lgCode').value.trim();
+    const { error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+    if (error){ $('lgMsg').textContent = 'Código inválido ou expirado. Peça outro.'; return; }
+    location.reload();
   };
 }
 
