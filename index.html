@@ -414,6 +414,7 @@ async function boot(){
   db.collection('checkins').orderBy('ts','desc').limit(1000).onSnapshot(snap => {
     S.checkins = snap.docs.map(d => ({id:d.id, ...d.data()}));
     S.loaded.checkins = true; schedule();
+    if (S.isOwner && !S.cleaned){ S.cleaned = true; cleanupPhotos(); }
   }, onErr);
   db.collection('groups').onSnapshot(snap => {
     S.groups = snap.docs.map(d => ({id:d.id, ...d.data()}));
@@ -556,6 +557,21 @@ function standings(c){
 }
 
 // ---------- photos ----------
+// Fotos com mais de 7 dias são apagadas (o check-in continua valendo para ranking e sequência),
+// mas as PHOTO_KEEP fotos mais recentes ficam sempre, para o mural nunca ficar vazio.
+const PHOTO_KEEP = 12, PHOTO_DAYS = 7;
+async function cleanupPhotos(){
+  try {
+    const live = S.checkins.filter(k => !k.np).sort((a,b) => (b.ts||0) - (a.ts||0));
+    const limit = Date.now() - PHOTO_DAYS*86400000;
+    const old = live.slice(PHOTO_KEEP).filter(k => (k.ts || 0) < limit).slice(0, 25);
+    for (const k of old){
+      await S.db.doc('photos/'+k.id).delete();
+      await S.db.doc('checkins/'+k.id).update({np:true});
+      S.photos.delete(k.id);
+    }
+  } catch(e){ console.warn('limpeza de fotos', e); }
+}
 function loadPhoto(id, holder){
   if (S.photos.has(id)){ const v = S.photos.get(id); if (v) holder.replaceChildren(el('img',{class:holder.dataset.cls||'photo', src:v, alt:'Foto do treino'})); return; }
   const io = new IntersectionObserver(async ents => {
@@ -672,7 +688,7 @@ function feedView(){
     ...mg.map(g => el('button',{class:'chip'+(S.feedGroup===g.id?' on':''), text:(g.emoji||'👥')+' '+g.name, onclick:() => { S.feedGroup = g.id; render(); }}))));
   const kind = S.feedKind || 'all';
   wrap.append(el('div',{class:'seg'}, ...[['all','Tudo'],['ch','🏆 Desafios'],['free','📸 Feed']].map(([v,l]) => el('button',{class:'chip'+(kind===v?' on':''), text:l, onclick:() => { S.feedKind = v; render(); }}))));
-  let list = S.checkins;
+  let list = S.checkins.filter(k => !k.np);
   if (S.feedGroup){ const g = mg.find(x => x.id === S.feedGroup); const set = new Set(g.members||[]); list = list.filter(k => set.has(k.u)); }
   if (kind === 'ch') list = list.filter(k => !!k.ch);
   if (kind === 'free') list = list.filter(k => !k.ch);
@@ -1495,7 +1511,7 @@ function userView(id){
   if (!all.length) wrap.append(el('div',{class:'empty', style:'padding:20px', text: isMe ? 'Seus check-ins vão aparecer aqui.' : 'Nenhum check-in ainda.'}));
   else {
     const g = el('div',{class:'grid'});
-    for (const k of all.slice(0, 60)){
+    for (const k of all.filter(k => !k.np).slice(0, 60)){
       const cell = el('div',{'data-cls':'', style:'cursor:pointer', onclick:() => openPost(k)}); cell.dataset.cls = 'gimg';
       g.append(cell); loadPhoto(k.id, cell);
     }
