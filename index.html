@@ -319,8 +319,10 @@ function toast(msg){
   setTimeout(() => t.remove(), 2600);
 }
 const GEMO_ = 0;
-const ACTS = [['Musculação','🏋️'],['Corrida','🏃'],['Funcional','🔥'],['Bike','🚴'],['Natação','🏊'],['Caminhada','🚶'],['Luta','🥊'],['Esporte','⚽'],['Yoga/Mobilidade','🧘'],['Outro','💪']];
+const ACTS = [['Musculação','🏋️'],['Corrida','🏃'],['Funcional','🔥'],['Bike','🚴'],['Natação','🏊'],['Caminhada','🚶'],['Luta','🥊'],['Esporte','⚽'],['Yoga/Mobilidade','🧘'],['Dança','💃'],['Pilates','🤸'],['Crossfit','⚡'],['Remo','🚣'],['Trilha','🥾'],['Surf','🏄'],['Outro','💪']];
 const actIcon = a => (ACTS.find(x => x[0] === a) || ['','💪'])[1];
+const actsOf = k => (k.as && k.as.length) ? k.as : (k.a ? [k.a] : ['Treino']);
+const actLabel = k => actsOf(k).map(a => actIcon(a)+' '+a).join(' + ') + (k.min ? ' · '+k.min+' min' : '') + (k.km ? ' · '+k.km+' km' : '') + (k.ch ? ' · 🏆' : '');
 const ICON = {
   share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-9.2-9A5 5 0 0 1 12 6a5 5 0 0 1 9.2 5C19 15.6 12 20 12 20z"/></svg>',
@@ -471,10 +473,15 @@ function bestStreak(id){
   for (const d of arr){ cur = (prev && diffDays(prev, d) === 1) ? cur+1 : 1; best = Math.max(best, cur); prev = d; }
   return best;
 }
+function chDates(id, c){
+  const s = new Set();
+  for (const k of S.checkins) if (k.u === id && k.date >= c.start && k.date <= c.end && (k.ch === undefined || k.ch === c.id)) s.add(k.date);
+  return s;
+}
 function standings(c){
   return participants(c).map(id => {
-    const ds = userDates(id, c.start, c.end);
-    const n = S.checkins.filter(k => k.u === id && k.date >= c.start && k.date <= c.end).length;
+    const ds = chDates(id, c);
+    const n = S.checkins.filter(k => k.u === id && k.date >= c.start && k.date <= c.end && (k.ch === undefined || k.ch === c.id)).length;
     return {id, pts:ds.size, n, st:streak(id)};
   }).sort((a,b) => b.pts - a.pts || b.n - a.n || nick(a.id).localeCompare(nick(b.id)));
 }
@@ -559,7 +566,7 @@ function onboarding(){
 function feedView(){
   const wrap = el('div');
   const t = today();
-  const mine = S.checkins.some(k => k.u === S.me && k.date === t);
+  const mine = S.checkins.filter(k => k.u === S.me && k.date === t).length;
   if (S.readOnly) wrap.append(el('div',{class:'note', text:'Seu acesso está só como visualização. Para registrar treinos, peça ao Léo para te convidar como editor.'}));
   // hero
   const st = streak(S.me), dset = userDates(S.me);
@@ -569,12 +576,12 @@ function feedView(){
     dots.append(el('div',{style:'flex:1;text-align:center'}, el('div',{style:'height:6px;border-radius:9px;background:'+(on?'var(--acc)':'var(--card2)')}), el('div',{class:'mut', style:'font-size:11px;margin-top:5px', text:wk[new Date(y,m-1,dd).getDay()]}))); }
   const first = (nick(S.me).split(' ')[0]);
   wrap.append(el('div',{class:'hero'},
-    el('div',{class:'mut', text: mine ? 'Treino de hoje registrado ✓' : 'Olá, '+first+'! Bora treinar hoje?'}),
+    el('div',{class:'mut', text: mine ? (mine === 1 ? 'Você já postou hoje ✓' : mine+' treinos postados hoje ✓') : 'Olá, '+first+'! Bora treinar hoje?'}),
     el('div',{class:'row', style:'align-items:flex-end;margin-top:8px'},
       el('div',{}, el('div',{class:'big', text:st}), el('div',{class:'mut', text: st===1 ? 'dia seguido' : 'dias seguidos'})),
       el('div',{style:'margin-left:auto;text-align:right'}, el('div',{class:'big', style:'font-size:30px;color:var(--acc2)', text:dset.size}), el('div',{class:'mut', text:'dias no total'}))),
     dots,
-    !mine ? el('button',{class:'btn', style:'margin-top:16px', text:'Registrar treino de hoje', onclick:openCheckin}) : null));
+    el('button',{class:'btn', style:'margin-top:16px', text: mine ? 'Postar outro treino' : 'Registrar treino de hoje', onclick:openCheckin})));
   for (const g of myInvites()) wrap.append(inviteCard(g));
   // active challenge snapshot
   const act = activeChallenges().filter(c => inCh(c, S.me));
@@ -614,7 +621,7 @@ function postCard(k){
   const pw = el('div',{class:'pw'}, ph, ov);
   ph.addEventListener('dblclick', () => { if (!iLike) toggleLike(k.id, false); });
   const card = el('div',{class:'card post'}, pw,
-    el('div',{class:'meta'}, el('span',{class:'badge acc'}, actIcon(k.a)+' '+(k.a||'Treino') + (k.min ? ' · '+k.min+' min' : '')),
+    el('div',{class:'meta'}, el('span',{class:'badge acc'}, actLabel(k)),
       el('div',{class:'acts'}, likeBtn, cmBtn,
         k.u === S.me ? (() => { const b = el('button',{'aria-label':'Story para o Instagram', title:'Story', onclick:() => openStory(k)}); b.innerHTML = ICON.share; return b; })() : null,
         (k.u === S.me || S.isOwner) ? el('button',{style:'color:var(--mut);font-size:13px', text:'Apagar', onclick:() => delCheckin(k)}) : null)));
@@ -662,7 +669,7 @@ function confirmSheet(title, msg, onYes){
 // ---------- check-in ----------
 function openCheckin(){
   if (S.readOnly){ toast('Seu acesso é só de leitura. Peça ao Léo para te convidar como editor.'); return; }
-  let photo = null, act = 'Musculação';
+  let photo = null, acts = ['Musculação'], chId = null;
   const t = today();
   let date = t;
   const drop = el('div',{class:'drop', style:'aspect-ratio:1/1'});
@@ -683,36 +690,48 @@ function openCheckin(){
     el('label',{class:'btn', style:'flex:1;text-align:center;cursor:pointer'}, '📷 Tirar foto', camIn),
     el('label',{class:'btn ghost', style:'flex:1;text-align:center;cursor:pointer'}, '🖼️ Galeria', galIn));
   const chips = el('div',{class:'chips'});
-  const drawChips = () => chips.replaceChildren(...ACTS.map(([n,i]) => el('button',{class:'chip'+(n===act?' on':''), text:i+' '+n, onclick:() => { act = n; drawChips(); }})));
+  const drawChips = () => chips.replaceChildren(...ACTS.map(([n,i]) => el('button',{class:'chip'+(acts.includes(n)?' on':''), text:i+' '+n, onclick:() => { acts = acts.includes(n) ? (acts.length>1 ? acts.filter(x => x!==n) : acts) : [...acts, n]; drawChips(); }})));
   drawChips();
+  const myCh = activeChallenges().filter(c => inCh(c, S.me));
+  const chOpts = el('div',{class:'chips'});
+  const drawCh = () => chOpts.replaceChildren(
+    el('button',{class:'chip'+(chId===null?' on':''), text:'Só no feed', onclick:() => { chId = null; drawCh(); }}),
+    ...myCh.map(c => el('button',{class:'chip'+(chId===c.id?' on':''), text:'🏆 '+c.name, onclick:() => { chId = c.id; drawCh(); }})));
+  drawCh();
   const dchips = el('div',{class:'chips'});
   const drawD = () => dchips.replaceChildren(...[[t,'Hoje'],[addDays(t,-1),'Ontem']].map(([d,l]) => el('button',{class:'chip'+(d===date?' on':''), text:l+' ('+fmtDate(d).slice(0,5)+')', onclick:() => { date = d; drawD(); }})));
   drawD();
   const min = el('input',{type:'number', inputmode:'numeric', min:1, max:600, placeholder:'Ex.: 60'});
+  const km = el('input',{type:'number', inputmode:'decimal', min:0, max:999, step:'0.01', placeholder:'Ex.: 5,2'});
   const cap = el('textarea',{rows:3, maxlength:400, placeholder:'Como foi o treino? (opcional)'});
-  const btn = el('button',{class:'btn', text:'Registrar treino', disabled:true, onclick: async () => {
+  const btn = el('button',{class:'btn', text:'Postar', disabled:true, onclick: async () => {
     if (!photo) return;
     btn.disabled = true; btn.textContent = 'Enviando…';
     const ref = S.db.collection('checkins').doc();
     const m = parseInt(min.value, 10);
+    const kv = parseFloat(String(km.value).replace(',', '.'));
+    const data = {u:S.me, date, ts:Date.now(), a:acts[0], as:acts, min:(m>0 && m<=600) ? m : null,
+      km:(kv>0 && kv<=999) ? Math.round(kv*100)/100 : null, ch:chId, cap:cap.value.trim().slice(0,400)};
+    const had = chId ? S.checkins.some(k => k.u === S.me && k.date === date && k.ch === chId) : false;
     const ok = await w(async () => {
       await S.db.doc('photos/'+ref.id).set({d:photo, u:S.me});
-      await ref.set({u:S.me, date, ts:Date.now(), a:act, min:(m>0 && m<=600) ? m : null, cap:cap.value.trim().slice(0,400)});
+      await ref.set(data);
     });
     if (ok){
       S.photos.set(ref.id, photo);
-      const had = S.checkins.some(k => k.u === S.me && k.date === date && k.id !== ref.id);
       closeSheet(); go('feed');
-      toast(had ? 'Check-in postado! (o ponto do dia já era seu)' : '+1 ponto! Boa! 💪');
-      const posted = {id:ref.id, u:S.me, date, ts:Date.now(), a:act, min:(m>0 && m<=600) ? m : null};
-      setTimeout(() => offerStory(posted), 700);
-    } else { btn.disabled = false; btn.textContent = 'Registrar treino'; }
+      const chName = chId ? ((myCh.find(c => c.id === chId) || {}).name || 'desafio') : null;
+      toast(chId ? (had ? 'Postado no '+chName+' (o ponto do dia já era seu)' : '+1 ponto no '+chName+'! 💪') : 'Postado no feed! 📸');
+      setTimeout(() => offerStory({id:ref.id, ...data}), 700);
+    } else { btn.disabled = false; btn.textContent = 'Postar'; }
   }});
   const upd = () => { btn.disabled = !photo; };
-  sheet('Registrar treino', el('div',{}, drop, picks,
-    el('label',{text:'Atividade'}), chips,
+  sheet('Postar treino', el('div',{}, drop, picks,
+    el('label',{text:'Atividades (pode marcar mais de uma)'}), chips,
+    el('label',{text:'Isso é para algum desafio?'}), chOpts,
     el('label',{text:'Quando foi?'}), dchips,
     el('label',{text:'Duração em minutos (opcional)'}), min,
+    el('label',{text:'Distância em km (opcional)'}), km,
     el('label',{text:'Legenda'}), cap,
     el('div',{style:'height:16px'}), btn));
 }
@@ -1209,7 +1228,7 @@ async function storyBlob(k){
   ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
   ctx.font = '700 46px Inter, sans-serif'; ctx.fillText(nick(k.u), px+48, py+ph-120);
   ctx.font = '500 36px Inter, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.85)';
-  const [yy,mm,dd] = k.date.split('-'); ctx.fillText(actIcon(k.a)+' '+(k.a||'Treino')+(k.min ? ' · '+k.min+' min' : '')+'  ·  '+dd+'/'+mm+'/'+yy, px+48, py+ph-60);
+  const [yy,mm,dd] = k.date.split('-'); ctx.fillText(actLabel(k)+'  ·  '+dd+'/'+mm+'/'+yy, px+48, py+ph-60);
   // números
   const st = streak(k.u), tot = userDates(k.u).size;
   const ch = activeChallenges().find(c => inCh(c, k.u)); let pos = null; if (ch){ const s2 = standings(ch); const i = s2.findIndex(r => r.id === k.u); if (i >= 0) pos = {i:i+1, n:s2.length, name:ch.name, pts:s2[i].pts}; }
