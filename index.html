@@ -1582,9 +1582,18 @@ const SPLITS = {
   'Glutes': ['hip-thrust','stiff-halter','avanco-bulgaro','agachamento-sumo-maquina','elevacao-pelvica','gluteo-polia','cadeira-abdutora','mesa-flexora'],
   'Quads':  ['agachamento-hack','leg-press-45','agachamento-smith','avanco-bulgaro','cadeira-extensora','leg-press-horizontal','afundo-halter','panturrilha-em-pe']
 };
+// Exercícios uniarticulares/monoarticulares: 3 séries válidas, sem aquecimento e sem aproximação (feeder).
+// Os demais (multiarticulares): 2 séries válidas, com 1 aquecimento e 1 aproximação (feeder).
+const UNI_ARTIC = new Set(['crucifixo-halter','crucifixo-maquina','cross-over','crucifixo-inverso-cruzado','crucifixo-inverso-maquina',
+  'lateral-cabo-costas','lateral-cabo-deitado','elevacao-lateral-halter','elevacao-lateral-cabo','elevacao-frontal','y-raise-cabo',
+  'kelso-shrug','encolhimento-halter','rosca-direta-barra','rosca-direta-halter','rosca-alternada','rosca-scott','rosca-martelo','rosca-polia',
+  'triceps-corda','triceps-barra-polia','triceps-testa','triceps-frances-halter','triceps-coice','triceps-maquina',
+  'cadeira-extensora','cadeira-flexora','mesa-flexora','cadeira-abdutora','cadeira-adutora','gluteo-polia','elevacao-pernas',
+  'panturrilha-em-pe','panturrilha-sentado']);
+const sugestaoSeries = ex => UNI_ARTIC.has(ex) ? {aq:0, ap:0, sr:3, rmin:8, rmax:12} : {aq:1, ap:1, sr:2, rmin:6, rmax:10};
 function applySplit(d, nome){
   d.nome = nome;
-  d.itens = SPLITS[nome].map(ex => ({ex, nome:exNome(ex), prescr:'', aq:0, ap:0, desc:'', sr:0, rmin:0, rmax:0, uni:false}));
+  d.itens = SPLITS[nome].map(ex => ({ex, nome:exNome(ex), prescr:'', ...sugestaoSeries(ex), desc:'', uni:false}));
   render();
 }
 function openCoach(id, cur){
@@ -2023,8 +2032,8 @@ function progressView(){
 function addEx(id){
   const d = S.draft; if (!d) return;
   if (S.draftKind === 'coach'){
-    if (S.swapIdx != null && d.itens[S.swapIdx]){ d.itens[S.swapIdx] = {...d.itens[S.swapIdx], ex:id, nome:exNome(id)}; S.swapIdx = null; }
-    else d.itens.push({ex:id, nome:exNome(id), prescr:'', aq:0, ap:0, desc:'', sr:0, rmin:0, rmax:0, uni:false});
+    if (S.swapIdx != null && d.itens[S.swapIdx]){ d.itens[S.swapIdx] = {...d.itens[S.swapIdx], ex:id, nome:exNome(id), ...sugestaoSeries(id)}; S.swapIdx = null; }
+    else d.itens.push({ex:id, nome:exNome(id), prescr:'', ...sugestaoSeries(id), desc:'', uni:false});
     S.pickQ = ''; S.pickG = 'Todos'; go('coach'); S.restoreY = null; { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } return;
   }
   const last = lastOf(id);
