@@ -120,6 +120,7 @@
   .srow input{width:100%;min-width:0}
   .srow.done input{border-color:var(--acc);background:rgba(31,159,227,.10)}
   .stype{height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--line);color:var(--tx);font-weight:800}
+  .stype.ro{cursor:default;opacity:.9}
   .stype.tA,.stype.tP{color:var(--acc)} .stype.tD{color:var(--gold)} .stype.tF{color:var(--danger)}
   .scheck{height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--line);color:var(--mut);font-weight:800;font-size:18px}
   .scheck.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -363,6 +364,7 @@ const GEMO_ = 0;
 const ACTS = [['Musculação','🏋️'],['Corrida','🏃'],['Funcional','🔥'],['Bike','🚴'],['Natação','🏊'],['Caminhada','🚶'],['Luta','🥊'],['Esporte','⚽'],['Yoga/Mobilidade','🧘'],['Dança','💃'],['Pilates','🤸'],['Crossfit','⚡'],['Remo','🚣'],['Trilha','🥾'],['Surf','🏄'],['Outro','💪']];
 const actIcon = a => (ACTS.find(x => x[0] === a) || ['','💪'])[1];
 const actsOf = k => (k.as && k.as.length) ? k.as : (k.a ? [k.a] : ['Treino']);
+const hm = ts => new Date(ts).toTimeString().slice(0,5);
 const actLabel = k => actsOf(k).map(a => actIcon(a)+' '+a).join(' + ') + (k.min ? ' · '+k.min+' min' : '') + (k.km ? ' · '+k.km+' km' : '') + (k.ch ? ' · 🏆' : '');
 const ICON = {
   share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
@@ -712,11 +714,11 @@ function postCard(k){
   likeBtn.innerHTML = iLike ? ICON.heartF : ICON.heart; likeBtn.append(el('span',{text:lk.size || ''}));
   const cmBtn = el('button', {'aria-label':'Comentários', onclick:() => openComments(k)}); cmBtn.innerHTML = ICON.chat; cmBtn.append(el('span',{text:cms.length || ''}));
   const ov = el('div',{class:'ov', onclick:() => go('user', k.u)}, avatar(k.u,'sm'),
-    el('div',{}, el('div',{class:'nm', text:nick(k.u)}), el('div',{style:'font-size:12px;opacity:.8', text:ago(k.ts) + (k.date !== dstr(new Date(k.ts)) ? ' · treino de '+fmtDate(k.date) : '')})));
+    el('div',{}, el('div',{class:'nm', text:nick(k.u)}), el('div',{style:'font-size:12px;opacity:.8', text:ago(k.ts) + ' · às '+hm(k.ts) + (k.date !== dstr(new Date(k.ts)) ? ' · treino de '+fmtDate(k.date) : '')})));
   const pw = el('div',{class:'pw'}, ph, ov);
   ph.addEventListener('dblclick', () => { if (!iLike) toggleLike(k.id, false); });
   const card = el('div',{class:'card post'}, pw,
-    el('div',{class:'meta'}, el('span',{class:'badge acc'}, actLabel(k)),
+    el('div',{class:'meta'}, el('span',{class:'badge acc'}, (k.tipo ? k.tipo+' · ' : '') + actLabel(k)),
       el('div',{class:'acts'}, likeBtn, cmBtn,
         k.u === S.me ? (() => { const b = el('button',{'aria-label':'Story para o Instagram', title:'Story', onclick:() => openStory(k)}); b.innerHTML = ICON.share; return b; })() : null,
         (k.u === S.me || S.isOwner) ? el('button',{style:'color:var(--mut);font-size:13px', text:'Apagar', onclick:() => delCheckin(k)}) : null)));
@@ -797,6 +799,9 @@ function openCheckin(){
   const dchips = el('div',{class:'chips'});
   const drawD = () => dchips.replaceChildren(...[[t,'Hoje'],[addDays(t,-1),'Ontem']].map(([d,l]) => el('button',{class:'chip'+(d===date?' on':''), text:l+' ('+fmtDate(d).slice(0,5)+')', onclick:() => { date = d; drawD(); }})));
   drawD();
+  let tipo = '';
+  const tipoIn = el('input',{type:'text', maxlength:30, placeholder:'Ex.: Upper, Push, Perna…', style:'width:100%', oninput: e => { tipo = e.target.value; }});
+  const tipoChips = el('div',{class:'chips'}, ...['Push','Pull','Legs','Upper','Lower','Glutes','Quads'].map(n => el('button',{class:'chip', text:n, onclick:() => { tipo = n; tipoIn.value = n; }})));
   const min = el('input',{type:'number', inputmode:'numeric', min:1, max:600, placeholder:'Ex.: 60'});
   const km = el('input',{type:'number', inputmode:'decimal', min:0, max:999, step:'0.01', placeholder:'Ex.: 5,2'});
   const cap = el('textarea',{rows:3, maxlength:400, placeholder:'Como foi o treino? (opcional)'});
@@ -807,7 +812,7 @@ function openCheckin(){
     const m = parseInt(min.value, 10);
     const kv = parseFloat(String(km.value).replace(',', '.'));
     const data = {u:S.me, date, ts:Date.now(), a:acts[0], as:acts, min:(m>0 && m<=600) ? m : null,
-      km:(kv>0 && kv<=999) ? Math.round(kv*100)/100 : null, ch:chId, cap:cap.value.trim().slice(0,400)};
+      km:(kv>0 && kv<=999) ? Math.round(kv*100)/100 : null, ch:chId, cap:cap.value.trim().slice(0,400), tipo:tipo.trim().slice(0,30) || null};
     const had = chId ? S.checkins.some(k => k.u === S.me && k.date === date && k.ch === chId) : false;
     const ok = await w(async () => {
       await S.db.doc('photos/'+ref.id).set({d:photo, u:S.me});
@@ -826,6 +831,7 @@ function openCheckin(){
     el('label',{text:'Atividades (pode marcar mais de uma)'}), chips,
     el('label',{text:'Isso é para algum desafio?'}), chOpts,
     el('label',{text:'Quando foi?'}), dchips,
+    el('label',{text:'Tipo do treino (opcional)'}), tipoChips, tipoIn,
     el('label',{text:'Duração em minutos (opcional)'}), min,
     el('label',{text:'Distância em km (opcional)'}), km,
     el('label',{text:'Legenda'}), cap,
@@ -1342,7 +1348,8 @@ async function storyBlob(k){
   ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff';
   ctx.font = '700 46px Inter, sans-serif'; ctx.fillText(nick(k.u), px+48, py+ph-120);
   ctx.font = '500 36px Inter, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.85)';
-  const [yy,mm,dd] = k.date.split('-'); ctx.fillText(actLabel(k)+'  ·  '+dd+'/'+mm+'/'+yy, px+48, py+ph-60);
+  const [yy,mm,dd] = k.date.split('-'); ctx.fillText(actLabel(k)+'  ·  '+dd+'/'+mm+'/'+yy+'  ·  às '+hm(k.ts), px+48, py+ph-60);
+  if (k.tipo){ ctx.font = '700 48px "'+B.font+'", sans-serif'; const tw = ctx.measureText(k.tipo).width; ctx.fillStyle = B.acc; rr(ctx, px+40, py+40, tw+64, 92, 46); ctx.fill(); ctx.fillStyle = B.bg1; ctx.fillText(k.tipo, px+72, py+104); }
   // números
   const st = streak(k.u), tot = userDates(k.u).size;
   const ch = activeChallenges().find(c => inCh(c, k.u)); let pos = null; if (ch){ const s2 = standings(ch); const i = s2.findIndex(r => r.id === k.u); if (i >= 0) pos = {i:i+1, n:s2.length, name:ch.name, pts:s2[i].pts}; }
@@ -1654,8 +1661,17 @@ async function sendTreino(uid, d){
   }, 'Treino enviado ✓');
   if (ok){ S.draft = null; openFicha(uid); }
 }
-function startLogFromAssigned(){
-  const at = S.assigned; if (!at) return;
+function beginLog(tr){
+  const pend = (S.draft && S.draftKind !== 'coach') ? S.draft : loadDraft();
+  if (pend && (pend.itens || []).length) return confirmSheet('Começar um treino novo?', 'Você tem um treino em andamento que ainda não foi salvo. Ele será descartado.', () => { clearDraft(); startLogFromAssigned(tr); }, 'Começar novo');
+  startLogFromAssigned(tr);
+}
+// treino feito antes, reaproveitado: mesmos exercícios e mesmo número de séries de trabalho
+function sessAsTreino(s){
+  return {nome:s.nome || '', itens:(s.itens || []).map(i => ({ex:i.ex, nome:i.nome, prescr:'', aq:0, ap:0, sr:(i.sets || []).filter(x => !isWarm(x.t)).length || 3, desc:'', rmin:0, rmax:0, uni:!!i.uni}))};
+}
+function startLogFromAssigned(tr){
+  const at = tr || S.assigned; if (!at) return;
   S.draftKind = 'log';
   S.draft = {id:newId(), date:today(), nome:at.nome || '', itens: treinoItens(at.itens).map(i => {
     const last = lastOf(i.ex);
@@ -1788,13 +1804,10 @@ function logbookView(){
   if (S.isOwner){
     wrap.append(el('button',{class:'btn ghost', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; saveDraft(); go('logsess'); { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } }}));
   } else if (S.assigned){
-    wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
+    wrap.append(el('div',{class:'card pad', style:'margin:14px 0;cursor:pointer', onclick:() => beginLog(null)},
       el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
       ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
-      el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:() => {
-        if (pend && (pend.itens || []).length) return confirmSheet('Começar um treino novo?', 'Você tem um treino em andamento que ainda não foi salvo. Ele será descartado.', () => { clearDraft(); startLogFromAssigned(); }, 'Começar novo');
-        startLogFromAssigned();
-      }})));
+      el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
   } else {
     wrap.append(el('div',{class:'empty', style:'margin:14px 0'}, el('div',{class:'big',text:'📋'}), 'O Léo ainda não montou um treino para você.'));
   }
@@ -1808,7 +1821,7 @@ function sessList(list, mine){
   for (const s of list.slice(0, 60)){
     const itens = s.itens || [];
     box.append(el('div',{class:'card pad', style:'margin-bottom:10px'},
-      el('div',{class:'row'}, el('b',{text:fmtDate(s.date)+(s.nome ? ' · '+s.nome : '')}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
+      el('div',{class:'row', ...(mine ? {style:'cursor:pointer', onclick:() => beginLog(sessAsTreino(s))} : {})}, el('b',{text:fmtDate(s.date)+(s.nome ? ' · '+s.nome : '')}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
       ...itens.map(i => el('div',{style:'margin-top:10px'}, el('div',{text:(i.nome || exNome(i.ex))+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(i.sets || [])}))),
       mine ? el('div',{class:'row', style:'margin-top:10px'}, el('button',{class:'link', style:'color:var(--mut);font-size:13px;margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este treino?', 'O histórico de cargas deste dia some.', () => w(() => S.db.doc('sessoes/'+S.me+'/'+s.id).delete(), 'Treino apagado'))})) : null));
   }
@@ -1929,7 +1942,7 @@ function sessionView(){
   wrap.append(el('div',{class:'row', style:'gap:10px;align-items:end'},
     el('div',{style:'flex:1'}, el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); saveDraft(); }})),
     el('div',{class:'mut', style:'padding-bottom:12px;font-size:13px', text: feitas+' de '+tot+' séries feitas'})));
-  wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série.'}));
+  if (S.isOwner) wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série.'}));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
   if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => { S.retY = window.scrollY; go('logpick'); }}));
@@ -1953,7 +1966,7 @@ function exBlock(d, it, idx){
     if (!isWarm(s.t)) n++;
     const lb = s.t || String(n);
     return el('div',{class:'srow'+(s.done ? ' done' : '')},
-      el('button',{class:'stype'+(s.t ? ' t'+s.t : ''), text:lb, 'aria-label':'Mudar tipo da série', onclick:() => { s.t = SET_TYPES[(SET_TYPES.indexOf(s.t || '') + 1) % SET_TYPES.length]; if (!s.t) delete s.t; saveDraft(); render(); }}),
+      el('button',{class:'stype'+(s.t ? ' t'+s.t : '')+(S.isOwner ? '' : ' ro'), text:lb, 'aria-label': S.isOwner ? 'Mudar tipo da série' : 'Tipo da série', ...(S.isOwner ? {onclick:() => { s.t = SET_TYPES[(SET_TYPES.indexOf(s.t || '') + 1) % SET_TYPES.length]; if (!s.t) delete s.t; saveDraft(); render(); }} : {disabled:true})}),
       el('input',{type:'number', inputmode:'numeric', placeholder: s.phR ? String(s.phR) : 'reps', value: s.r ?? '', oninput: e => { s.r = e.target.value; saveDraft(); }}),
       el('input',{type:'number', inputmode:'decimal', step:'any', placeholder: s.phKg ? s.phKg+' kg' : 'kg', value: s.kg ?? '', oninput: e => { s.kg = e.target.value; saveDraft(); }}),
       el('button',{class:'scheck'+(s.done ? ' on' : ''), text:'✓', 'aria-label':'Série feita', onclick:() => toggleDone(it, s)}),
