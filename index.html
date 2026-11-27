@@ -323,7 +323,24 @@ window.claude = {
     return null;
   }
 };
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // ao voltar para o app, verifica se há versão nova
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    reg.addEventListener('updatefound', () => {
+      const nova = reg.installing; if (!nova) return;
+      nova.addEventListener('statechange', () => { if (nova.state === 'installed' && navigator.serviceWorker.controller) mostrarAtualizacao(); });
+    });
+  }).catch(() => {});
+}
+// não recarrega sozinho (para não perder o que está sendo anotado); mostra um botão
+function mostrarAtualizacao(){
+  if (document.getElementById('upd')) return;
+  const b = document.createElement('button'); b.id = 'upd'; b.textContent = 'Nova versão disponível · toque para atualizar';
+  b.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:50;background:#1f9fe3;color:#fff;border:0;border-radius:999px;padding:10px 18px;font-weight:700;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+  b.onclick = () => location.reload();
+  document.body.append(b);
+}
 </script>
 
 <script>
