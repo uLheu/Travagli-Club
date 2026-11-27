@@ -116,6 +116,30 @@
 .ch-tag{font-size:12px;font-weight:700;color:var(--gold);padding:9px 14px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.5px}
 .card.post.ch-post{border-color:var(--gold)}
   .st-on{color:var(--acc)} .st-up{color:var(--gold)} .st-end{color:var(--mut)}
+  .srow{display:grid;grid-template-columns:38px 1fr 1fr 44px 26px;gap:6px;align-items:center;margin-top:8px}
+  .srow input{width:100%;min-width:0}
+  .srow.done input{border-color:var(--acc);background:rgba(31,159,227,.10)}
+  .stype{height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--line);color:var(--tx);font-weight:800}
+  .stype.tA,.stype.tP{color:var(--acc)} .stype.tD{color:var(--gold)} .stype.tF{color:var(--danger)}
+  .scheck{height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--line);color:var(--mut);font-weight:800;font-size:18px}
+  .scheck.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .exnote{margin-top:6px;padding:8px 10px;border-radius:10px;background:var(--card2);font-size:13px;line-height:1.4}
+  .restbar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:30;display:flex;gap:8px;align-items:center;background:var(--card2);border:1px solid var(--acc);border-radius:16px;padding:10px 12px;box-shadow:0 10px 28px rgba(0,0,0,.5)}
+  .restbar .rt{flex:1;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+  .restbar button{background:var(--card);border:1px solid var(--line);color:var(--tx);border-radius:10px;padding:8px 10px;font-weight:700}
+  .mitem{display:block;width:100%;text-align:left;padding:15px 4px;border:0;border-bottom:1px solid var(--line);font-weight:600;font-size:15px;background:none;color:var(--tx)}
+  .mitem:last-child{border-bottom:0} .mitem.danger{color:var(--danger)}
+  .rec{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .rec div{background:var(--card2);border-radius:12px;padding:10px}
+  .rec b{display:block;font-size:22px;font-variant-numeric:tabular-nums} .rec span{font-size:12px;color:var(--mut)}
+  .gbar{display:grid;grid-template-columns:100px 1fr 34px;gap:10px;align-items:center;margin-top:9px;font-size:14px}
+  .gtrack{height:12px;border-radius:6px;background:var(--card2);overflow:hidden}
+  .gtrack i{display:block;height:100%;background:var(--acc);border-radius:6px}
+  .gbar b{text-align:right;font-variant-numeric:tabular-nums}
+  .wbars{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;align-items:end;height:130px;margin-top:8px}
+  .wbar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;font-size:11px;color:var(--mut)}
+  .wbar i{width:100%;max-width:26px;background:#253049;border-radius:6px 6px 3px 3px;min-height:3px;display:block}
+  .wbar.cur i{background:var(--acc)} .wbar b{color:var(--tx);font-size:12px}
   .pick{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
   .pick input{width:22px;height:22px;accent-color:var(--acc);flex:none}
   .link{background:none;border:0;color:var(--acc);font-weight:600;padding:0}
@@ -439,7 +463,9 @@ async function boot(){
 }
 
 let raf = 0;
-function schedule(){ if (raf) return; raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+function typing(){ const a = document.activeElement; return !!(a && a.closest && a.closest('#main') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
+function schedule(){ if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (typing()){ S.pendingRender = true; return; } render(); }); }
+document.addEventListener('focusout', () => setTimeout(() => { if (S.pendingRender && !typing()){ S.pendingRender = false; render(); } }, 50));
 
 function go(tab, extra){
   S.tab = tab; if (tab === 'user') S.viewUser = extra;
@@ -455,7 +481,7 @@ async function render(){
     main.replaceChildren(onboarding());
     return;
   }
-  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = ['ficha','coach','biblio'].includes(S.tab) ? 'none' : 'flex';
+  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = ['ficha','coach','biblio','logbook','logsess','logpick','progresso'].includes(S.tab) ? 'none' : 'flex';
   $('#meBtn').replaceChildren(avatar(S.me));
   const ids = [...S.members.keys()];
   try { S.profiles = await S.user.profiles(ids); } catch(e){}
@@ -475,6 +501,7 @@ async function render(){
   else if (S.tab === 'logpick') view = pickerView();
   else if (S.tab === 'coach') view = coachView();
   else if (S.tab === 'biblio') view = biblioView();
+  else if (S.tab === 'progresso') view = progressView();
   else if (S.tab === 'user') view = userView(S.viewUser);
   const y = window.scrollY;
   main.replaceChildren(view);
@@ -708,8 +735,8 @@ function closeSheet(){
   openSheetEl.bg.remove(); document.body.style.overflow = '';
   const f = openSheetEl.onClose; openSheetEl = null; if (f) f();
 }
-function confirmSheet(title, msg, onYes){
-  const yes = el('button',{class:'btn danger', text:'Sim, apagar', onclick: async () => { yes.disabled = true; await onYes(); closeSheet(); }});
+function confirmSheet(title, msg, onYes, yesText){
+  const yes = el('button',{class:'btn danger', text:yesText || 'Sim, apagar', onclick: async () => { yes.disabled = true; await onYes(); closeSheet(); }});
   sheet(title, el('div',{}, el('p',{class:'mut', style:'line-height:1.5', text:msg}), yes, el('div',{style:'height:8px'}), el('button',{class:'btn ghost', text:'Cancelar', onclick:closeSheet})));
 }
 
@@ -1114,6 +1141,9 @@ function openFicha(id){
   S.fichaUser = id; S.fichaAvs = null; S.areaView = 'edit';
   if (S.fichaTreinoUnsub) S.fichaTreinoUnsub();
   S.fichaTreinos = null;
+  if (S.fichaSessUnsub) S.fichaSessUnsub();
+  S.fichaSessoes = null;
+  S.fichaSessUnsub = S.db.collection('sessoes/'+id).onSnapshot(snap => { S.fichaSessoes = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0)); schedule(); }, e => console.warn(e));
   S.fichaTreinoUnsub = S.db.collection('treinos/'+id).onSnapshot(snap => { S.fichaTreinos = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0)); schedule(); }, e => console.warn(e));
   S.fichaUnsub = S.db.collection('fichas/'+id+'/avs').onSnapshot(snap => { S.fichaAvs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (a.data||'').localeCompare(b.data||'')); schedule(); }, e => console.warn(e));
   go('ficha');
@@ -1157,7 +1187,9 @@ function fichaView(){
     cur ? el('div',{}, el('div',{class:'mut', style:'margin-top:6px', text: cur.nome+' · enviado '+fmtDate(dstr(new Date(cur.ts)))}),
       ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:[prepTxt(i), i.prescr].filter(Boolean).join(' · ') || 'Sem prescrição'}))))
       : el('div',{class:'mut', style:'margin-top:6px', text:'Nenhum treino enviado ainda.'}),
-    el('button',{class:'btn sm', style:'margin-top:12px', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)})));
+    el('div',{class:'row', style:'gap:8px;margin-top:12px'},
+      el('button',{class:'btn sm', style:'flex:1', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)}),
+      el('button',{class:'btn ghost sm', style:'flex:1', text:'📈 Logbook e progresso', onclick:() => { S.progFor = id; go('progresso'); }}))));
   // avaliações
   const avs = S.fichaAvs;
   const ac = el('div',{class:'card pad'}, el('div',{class:'row'}, el('div',{class:'nm', text:'Avaliações publicadas'}), el('button',{class:'btn sm', style:'margin-left:auto', text:'📥 Colar do app', onclick:() => pasteAv(id)})));
@@ -1457,7 +1489,7 @@ function userView(id){
       el('button',{class:'btn ghost sm', style:'flex:1', text:'Sair da conta', onclick:() => confirmSheet('Sair da conta?', 'Você vai precisar pegar um novo código por e-mail para entrar de novo.', async () => {
         await sb.auth.signOut();
         location.reload();
-      })})));
+      }, 'Sair')})));
   }
   wrap.append(el('div',{class:'nm', style:'margin:16px 2px 8px', text:'Treinos ('+all.length+')'}));
   if (!all.length) wrap.append(el('div',{class:'empty', style:'padding:20px', text: isMe ? 'Seus check-ins vão aparecer aqui.' : 'Nenhum check-in ainda.'}));
@@ -1548,7 +1580,7 @@ function coachView(){
     const ok = await w(() => S.db.doc('biblioteca/'+d.id).set(data), 'Salvo na biblioteca ✓');
     if (ok && !id){ S.draft = null; go('biblio'); }
   }}));
-  if (id) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Enviar para o aluno', disabled: !d.itens.length, onclick: () => confirmSheet('Enviar este treino para '+nick(id)+'?', 'O treino anterior dele some e ele passa a ver só este.', () => sendTreino(id, d))}));
+  if (id) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Enviar para o aluno', disabled: !d.itens.length, onclick: () => confirmSheet('Enviar este treino para '+nick(id)+'?', 'O treino anterior dele some e ele passa a ver só este.', () => sendTreino(id, d), 'Enviar')}));
   return wrap;
 }
 async function sendTreino(uid, d){
@@ -1570,7 +1602,7 @@ function startLogFromAssigned(){
     const base = last ? Math.max(0, ...last.sets.map(x => +x.kg || 0)) : 0;
     return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, sets:[...prepSets(i.aq, i.ap, base), ...work]};
   })};
-  go('logsess');
+  saveDraft(); go('logsess');
 }
 function biblioView(){
   if (!S.isOwner){ go('logbook'); return el('div'); }
@@ -1680,67 +1712,227 @@ function logbookView(){
   const wrap = el('div');
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
     el('button',{class:'link', text:'← Plano', onclick:() => go('area')}),
-    el('h2',{text:'Meu logbook', style:'margin:0'})));
+    el('h2',{text:'Meu logbook', style:'margin:0'}),
+    el('button',{class:'btn ghost sm', style:'margin-left:auto;width:auto', text:'📈 Progresso', onclick:() => { S.progFor = null; go('progresso'); }})));
+  const pend = (S.draft && S.draftKind !== 'coach') ? S.draft : loadDraft();
+  if (pend && (pend.itens || []).length) wrap.append(el('button',{class:'btn', style:'margin:14px 0 0', text:'▶ Continuar treino em andamento', onclick:() => { S.draft = pend; S.draftKind = 'log'; go('logsess'); }}));
   if (S.isOwner){
-    wrap.append(el('button',{class:'btn', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; go('logsess'); }}));
+    wrap.append(el('button',{class:'btn ghost', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; saveDraft(); go('logsess'); }}));
   } else if (S.assigned){
     wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
       el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
       ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:[prepTxt(i), i.prescr].filter(Boolean).join(' · ') || 'Sem prescrição'}))),
-      el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:startLogFromAssigned})));
+      el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:() => {
+        if (pend && (pend.itens || []).length) return confirmSheet('Começar um treino novo?', 'Você tem um treino em andamento que ainda não foi salvo. Ele será descartado.', () => { clearDraft(); startLogFromAssigned(); }, 'Começar novo');
+        startLogFromAssigned();
+      }})));
   } else {
     wrap.append(el('div',{class:'empty', style:'margin:14px 0'}, el('div',{class:'big',text:'📋'}), 'O Léo ainda não montou um treino para você.'));
   }
   const list = S.sessoes || [];
   if (!list.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'📓'}), 'Nenhum treino registrado ainda.')); return wrap; }
+  wrap.append(sessList(list, true));
+  return wrap;
+}
+function sessList(list, mine){
+  const box = el('div');
   for (const s of list.slice(0, 60)){
     const itens = s.itens || [];
-    wrap.append(el('div',{class:'card pad', style:'margin-bottom:10px'},
-      el('div',{class:'row'}, el('b',{text:fmtDate(s.date)}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
+    box.append(el('div',{class:'card pad', style:'margin-bottom:10px'},
+      el('div',{class:'row'}, el('b',{text:fmtDate(s.date)+(s.nome ? ' · '+s.nome : '')}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
       ...itens.map(i => el('div',{style:'margin-top:10px'}, el('div',{text:i.nome || exNome(i.ex)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(i.sets || [])}))),
-      el('div',{class:'row', style:'margin-top:10px'}, el('button',{class:'link', style:'color:var(--mut);font-size:13px;margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este treino?', 'O histórico de cargas deste dia some.', () => w(() => S.db.doc('sessoes/'+S.me+'/'+s.id).delete(), 'Treino apagado'))}))));
+      mine ? el('div',{class:'row', style:'margin-top:10px'}, el('button',{class:'link', style:'color:var(--mut);font-size:13px;margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este treino?', 'O histórico de cargas deste dia some.', () => w(() => S.db.doc('sessoes/'+S.me+'/'+s.id).delete(), 'Treino apagado'))})) : null));
   }
-  return wrap;
+  return box;
+}
+
+// rascunho do treino em andamento (fica no aparelho)
+function saveDraft(){ try { if (S.draft && S.draftKind !== 'coach') localStorage.setItem('tc-draft-'+S.me, JSON.stringify(S.draft)); } catch(e){} }
+function clearDraft(){ try { localStorage.removeItem('tc-draft-'+S.me); } catch(e){} }
+function loadDraft(){ try { const v = localStorage.getItem('tc-draft-'+S.me); return v ? JSON.parse(v) : null; } catch(e){ return null; } }
+
+// cronômetro de descanso
+function startRest(sec){ S.rest = {end: Date.now() + sec*1000}; tickRest(); if (!S.restInt) S.restInt = setInterval(tickRest, 300); }
+function stopRest(){ S.rest = null; tickRest(); }
+function adjRest(x){ if (!S.rest) return; S.rest.end += x*1000; S.restSec = Math.max(15, (S.restSec || 90) + x); tickRest(); }
+function tickRest(){
+  let bar = document.getElementById('restBar');
+  if (!S.rest){ if (bar) bar.remove(); if (S.restInt){ clearInterval(S.restInt); S.restInt = 0; } return; }
+  if (!bar){
+    bar = el('div',{id:'restBar', class:'restbar'}, el('span',{class:'rt'}),
+      el('button',{text:'−15', onclick:() => adjRest(-15)}), el('button',{text:'+15', onclick:() => adjRest(15)}), el('button',{text:'Pular', onclick:stopRest}));
+    document.body.append(bar);
+  }
+  const left = Math.max(0, Math.ceil((S.rest.end - Date.now())/1000));
+  bar.querySelector('.rt').textContent = '⏱ Descanso '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
+  if (!left){ try { navigator.vibrate && navigator.vibrate([200,100,200]); } catch(e){} toast('Descanso acabou 💪'); stopRest(); }
+}
+
+const SET_TYPES = ['', 'A', 'P', 'D', 'F'];
+const e1rm = (kg, r) => (kg > 0 && r > 0) ? kg * (1 + Math.min(r, 12)/30) : 0;
+const exGrupo = id => { const e = exAll().find(x => x[0] === id); return e ? e[2] : 'Outro'; };
+function toggleDone(it, s){
+  if (!s.done){
+    if ((s.r === '' || s.r == null) && s.phR) s.r = String(s.phR);
+    if ((s.kg === '' || s.kg == null) && s.phKg) s.kg = String(s.phKg);
+    if (!s.r && !s.kg) return toast('Preencha reps ou carga');
+    s.done = true;
+    startRest(isWarm(s.t) ? 60 : (S.restSec || 90));
+  } else s.done = false;
+  saveDraft(); render();
+}
+
+function exMenu(d, idx){
+  const it = d.itens[idx];
+  const b = (t, fn, cls) => el('button',{class:'mitem'+(cls ? ' '+cls : ''), text:t, onclick:() => { closeSheet(); fn(); }});
+  const mv = k => { const x = d.itens.splice(idx, 1)[0]; d.itens.splice(idx + k, 0, x); saveDraft(); render(); };
+  sheet(exNome(it.ex), el('div',{},
+    b('📈 Histórico do exercício', () => exHistory(it.ex, S.sessoes)),
+    b('📝 Nota fixa', () => editNota(it.ex)),
+    idx > 0 ? b('↑ Mover para cima', () => mv(-1)) : null,
+    idx < d.itens.length - 1 ? b('↓ Mover para baixo', () => mv(1)) : null,
+    b('＋ Adicionar série', () => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }),
+    S.isOwner ? b('Remover do treino', () => { d.itens.splice(idx, 1); saveDraft(); render(); }, 'danger') : null));
+}
+function exHistory(exId, list){
+  const rows = []; let best = 0, maxKg = 0, maxR = 0;
+  for (const s of list || []){
+    const it = (s.itens || []).find(i => i.ex === exId); if (!it) continue;
+    const ws = (it.sets || []).filter(x => !isWarm(x.t)); if (!ws.length) continue;
+    rows.push({date:s.date, sets:it.sets});
+    for (const x of ws){ best = Math.max(best, e1rm(+x.kg, +x.r)); if ((+x.kg || 0) > maxKg){ maxKg = +x.kg; maxR = +x.r || 0; } }
+  }
+  sheet(exNome(exId), el('div',{},
+    rows.length ? el('div',{class:'rec'},
+      el('div',{}, el('b',{text: maxKg ? fmt(maxKg, maxKg % 1 ? 1 : 0)+' kg' : '—'}), el('span',{text:'maior carga'+(maxR ? ' ('+maxR+' reps)' : '')})),
+      el('div',{}, el('b',{text: best ? fmt(best, 0)+' kg' : '—'}), el('span',{text:'1RM estimado'}))) : null,
+    ...(rows.length ? rows.slice(0, 30).map(r => el('div',{class:'pick'}, el('div',{}, el('div',{class:'nm', text:fmtDate(r.date)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(r.sets)}))))
+      : [el('div',{class:'mut', style:'padding:6px 0 10px', text:'Ainda não tem registro deste exercício.'})])));
+}
+function editNota(exId){
+  const ta = el('textarea',{rows:3, placeholder:'Ex.: banco na posição 4, pegada fechada'});
+  ta.value = ((S.members.get(S.me) || {}).notas || {})[exId] || '';
+  sheet('Nota fixa', el('div',{},
+    el('div',{class:'mut', style:'margin-bottom:8px', text:exNome(exId)+' · aparece sempre que este exercício estiver no treino.'}), ta,
+    el('button',{class:'btn', style:'margin-top:12px', text:'Salvar nota', onclick: async () => {
+      const cur = S.members.get(S.me) || {}; const notas = {...(cur.notas || {})}; const v = ta.value.trim();
+      if (v) notas[exId] = v.slice(0, 300); else delete notas[exId];
+      if (await w(() => S.db.doc('members/'+S.me).set({...cur, notas}), 'Nota salva')){ closeSheet(); render(); }
+    }})));
 }
 
 function sessionView(){
   if (!S.draft){ go('logbook'); return el('div'); }
   const d = S.draft;
   const wrap = el('div');
+  const filled = () => d.itens.some(i => i.sets.some(s => s.r || s.kg));
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
-    el('button',{class:'link', text:'← Cancelar', onclick:() => { S.draft = null; go('logbook'); }}),
+    el('button',{class:'link', text:'← Sair', onclick:() => go('logbook')}),
     el('h2',{text: d.nome || 'Novo treino', style:'margin:0'})));
-  wrap.append(el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); }}));
+  const tot = d.itens.reduce((a, i) => a + i.sets.length, 0), feitas = d.itens.reduce((a, i) => a + i.sets.filter(s => s.done).length, 0);
+  wrap.append(el('div',{class:'row', style:'gap:10px;align-items:end'},
+    el('div',{style:'flex:1'}, el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); saveDraft(); }})),
+    el('div',{class:'mut', style:'padding-bottom:12px;font-size:13px', text: feitas+' de '+tot+' séries feitas'})));
+  wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série para iniciar o descanso.'}));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
   if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
-  const ok = d.itens.some(i => i.sets.some(s => s.r || s.kg));
-  wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !ok, onclick: async () => {
+  wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !filled(), onclick: async () => {
     const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), sets:i.sets.filter(s => s.r || s.kg).map(s => ({ ...(s.t ? {t:s.t} : {}),
       r: s.r === '' || s.r == null ? null : Number(s.r),
       kg: s.kg === '' || s.kg == null ? null : Number(String(s.kg).replace(',', '.'))}))})).filter(i => i.sets.length);
     if (!itens.length){ toast('Preencha pelo menos uma série'); return; }
     const data = {date:d.date, ts:Date.now(), itens, nome: d.nome || null};
     const saved = await w(() => S.db.doc('sessoes/'+S.me+'/'+d.id).set(data), 'Treino salvo ✓');
-    if (saved){ S.draft = null; go('logbook'); }
+    if (saved){ S.draft = null; clearDraft(); stopRest(); go('logbook'); }
   }}));
+  wrap.append(el('button',{class:'link', style:'display:block;margin:16px auto 90px;color:var(--mut)', text:'Descartar este treino', onclick:() => confirmSheet('Descartar o treino?', 'O que você anotou hoje e ainda não salvou será perdido.', () => { S.draft = null; clearDraft(); stopRest(); go('logbook'); }, 'Descartar')}));
   return wrap;
 }
 
 function exBlock(d, it, idx){
   const last = lastOf(it.ex);
+  const nota = ((S.members.get(S.me) || {}).notas || {})[it.ex];
+  let n = 0;
+  const rows = it.sets.map((s, si) => {
+    if (!isWarm(s.t)) n++;
+    const lb = s.t || String(n);
+    return el('div',{class:'srow'+(s.done ? ' done' : '')},
+      el('button',{class:'stype'+(s.t ? ' t'+s.t : ''), text:lb, 'aria-label':'Mudar tipo da série', onclick:() => { s.t = SET_TYPES[(SET_TYPES.indexOf(s.t || '') + 1) % SET_TYPES.length]; if (!s.t) delete s.t; saveDraft(); render(); }}),
+      el('input',{type:'number', inputmode:'numeric', placeholder: s.phR ? String(s.phR) : 'reps', value: s.r ?? '', oninput: e => { s.r = e.target.value; saveDraft(); }}),
+      el('input',{type:'number', inputmode:'decimal', step:'any', placeholder: s.phKg ? s.phKg+' kg' : 'kg', value: s.kg ?? '', oninput: e => { s.kg = e.target.value; saveDraft(); }}),
+      el('button',{class:'scheck'+(s.done ? ' on' : ''), text:'✓', 'aria-label':'Série feita', onclick:() => toggleDone(it, s)}),
+      el('button',{class:'link', style:'color:var(--mut)', text:'✕', 'aria-label':'Apagar série', onclick:() => { it.sets.splice(si, 1); if (!it.sets.some(x => !isWarm(x.t))) it.sets.push({r:'', kg:''}); saveDraft(); render(); }}));
+  });
   return el('div',{class:'card pad', style:'margin-top:10px'},
-    el('div',{class:'row'}, el('b',{text:exNome(it.ex)}),
-      S.isOwner ? el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }}) : null),
+    el('div',{class:'row', style:'align-items:center'}, el('b',{text:exNome(it.ex), style:'flex:1'}),
+      el('button',{class:'link', style:'font-size:22px;line-height:1;padding:0 6px;color:var(--tx)', text:'…', 'aria-label':'Opções do exercício', onclick:() => exMenu(d, idx)})),
     (it.prescr || it.aq || it.ap) ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+[prepTxt(it), it.prescr].filter(Boolean).join(' · ')}) : null,
+    nota ? el('div',{class:'exnote', text:'📝 '+nota}) : null,
     el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
-    it.sets.some(x => isWarm(x.t)) ? el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text:'A = aquecimento · P = aproximação. Não contam como série de trabalho. Os números apagados são a sugestão.'}) : null,
-    ...(() => { let n = 0; return it.sets.map((s, si) => { const lb = s.t === 'A' ? 'A' : s.t === 'P' ? 'P' : (++n)+'ª'; return el('div',{class:'row', style:'gap:6px;margin-top:8px;align-items:center'},
-      el('span',{class:'mut', style:'width:30px;font-size:13px;'+(isWarm(s.t) ? 'color:var(--acc);font-weight:700' : ''), text:lb}),
-      el('input',{type:'number', inputmode:'numeric', placeholder: s.phR ? String(s.phR) : 'reps', value: s.r ?? '', style:'width:84px', oninput: e => { s.r = e.target.value; }}),
-      el('input',{type:'number', inputmode:'decimal', placeholder: s.phKg ? s.phKg+' kg' : 'kg', value: s.kg ?? '', style:'width:96px', oninput: e => { s.kg = e.target.value; }}),
-      el('button',{class:'link', style:'color:var(--mut);margin-left:auto', text:'✕', onclick:() => { it.sets.splice(si,1); if (!it.sets.some(x => !isWarm(x.t))) it.sets.push({r:'',kg:''}); render(); }})); }); })(),
-    el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); render(); }}));
+    ...rows,
+    el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }}));
+}
+
+// ---------- progresso ----------
+function weekStart(ds){ const [y,m,dd] = ds.split('-').map(Number); const wd = (new Date(y, m-1, dd).getDay() + 6) % 7; return addDays(ds, -wd); }
+function progressView(){
+  const uid = S.progFor || S.me; const mine = uid === S.me;
+  const list = mine ? (S.sessoes || []) : (S.fichaSessoes || []);
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Voltar', onclick:() => go(mine ? 'logbook' : 'ficha')}),
+    el('h2',{text: mine ? 'Progresso' : 'Progresso de '+nick(uid), style:'margin:0'})));
+  if (!mine && S.fichaSessoes == null){ wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Carregando…'})); return wrap; }
+  if (!list.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'📈'}), mine ? 'Registre seus treinos no logbook para ver o progresso.' : 'Este aluno ainda não registrou treinos.')); return wrap; }
+  const wk = weekStart(today());
+  const weeks = [...Array(8)].map((_, k) => addDays(wk, -7*(7-k)));
+  const perWeek = new Map(weeks.map(w => [w, 0]));
+  const grupos = new Map(); let treinos = 0, series = 0, vol = 0;
+  const recs = new Map();
+  for (const s of list){
+    const ws0 = weekStart(s.date || today());
+    if (ws0 === wk) treinos++;
+    for (const it of (s.itens || [])){
+      const work = (it.sets || []).filter(x => !isWarm(x.t));
+      if (perWeek.has(ws0)) perWeek.set(ws0, perWeek.get(ws0) + work.length);
+      if (ws0 === wk){
+        series += work.length;
+        const g = exGrupo(it.ex); grupos.set(g, (grupos.get(g) || 0) + work.length);
+        for (const x of work) vol += (+x.kg || 0) * (+x.r || 0);
+      }
+      for (const x of work){
+        const r = recs.get(it.ex) || {nome: it.nome || exNome(it.ex), kg:0, r:0, e1:0, date:''};
+        const kg = +x.kg || 0, e = e1rm(kg, +x.r || 0);
+        if (kg > r.kg || (kg === r.kg && (+x.r || 0) > r.r) || (kg === r.kg && (+x.r || 0) === r.r && kg > 0 && (s.date || '') < r.date)){ r.kg = kg; r.r = +x.r || 0; r.date = s.date; }
+        if (e > r.e1) r.e1 = e;
+        recs.set(it.ex, r);
+      }
+    }
+  }
+  wrap.append(el('div',{class:'rec', style:'grid-template-columns:1fr 1fr 1fr;margin-top:14px'},
+    el('div',{}, el('b',{text:String(treinos)}), el('span',{text:'treinos na semana'})),
+    el('div',{}, el('b',{text:String(series)}), el('span',{text:'séries de trabalho'})),
+    el('div',{}, el('b',{text: vol >= 1000 ? fmt(vol/1000, 1)+' t' : fmt(vol, 0)+' kg'}), el('span',{text:'volume (kg × reps)'}))));
+  const gc = el('div',{class:'card pad'}, el('div',{class:'nm', text:'Séries por grupo muscular · esta semana'}));
+  const gl = [...grupos.entries()].sort((a,b) => b[1] - a[1]);
+  if (!gl.length) gc.append(el('div',{class:'mut', style:'margin-top:8px', text:'Nenhuma série registrada nesta semana ainda.'}));
+  const gmax = Math.max(20, ...gl.map(x => x[1]));
+  for (const [g, v] of gl) gc.append(el('div',{class:'gbar'}, el('span',{text:g}), el('div',{class:'gtrack'}, el('i',{style:'width:'+Math.round(v/gmax*100)+'%'})), el('b',{text:String(v)})));
+  gc.append(el('div',{class:'mut', style:'font-size:12px;margin-top:10px', text:'Aquecimento e aproximação não entram na conta.'}));
+  wrap.append(gc);
+  const wmax = Math.max(1, ...perWeek.values());
+  wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'Séries de trabalho por semana'}),
+    el('div',{class:'wbars'}, ...weeks.map(w => { const v = perWeek.get(w); return el('div',{class:'wbar'+(w === wk ? ' cur' : '')}, el('b',{text:String(v)}), el('i',{style:'height:'+Math.max(3, Math.round(v/wmax*90))+'px'}), el('span',{text:w.slice(8,10)+'/'+w.slice(5,7)})); }))));
+  const rl = [...recs.entries()].filter(([, r]) => r.kg > 0).sort((a,b) => (b[1].date || '').localeCompare(a[1].date || ''));
+  const rc = el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏆 Recordes'}));
+  if (!rl.length) rc.append(el('div',{class:'mut', style:'margin-top:8px', text:'Ainda sem cargas registradas.'}));
+  for (const [ex, r] of rl.slice(0, 40)) rc.append(el('div',{class:'pick', style:'cursor:pointer', onclick:() => exHistory(ex, list)},
+    el('div',{style:'flex:1;min-width:0'}, el('div',{class:'nm', text:r.nome}), el('div',{class:'mut', style:'font-size:12px', text:'em '+fmtDate(r.date)+(r.e1 ? ' · 1RM estimado '+fmt(r.e1, 0)+' kg' : '')})),
+    el('b',{text: fmt(r.kg, r.kg % 1 ? 1 : 0)+' kg'+(r.r ? ' × '+r.r : '')})));
+  wrap.append(rc);
+  if (!mine){ wrap.append(el('div',{class:'nm', style:'margin:16px 2px 8px', text:'Treinos registrados'}), sessList(list, false)); }
+  return wrap;
 }
 
 function addEx(id){
@@ -1749,7 +1941,7 @@ function addEx(id){
   const last = lastOf(id);
   d.itens.push({ex:id, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]});
   S.pickQ = ''; S.pickG = 'Todos';
-  go('logsess');
+  saveDraft(); go('logsess');
 }
 
 function pickerView(){
