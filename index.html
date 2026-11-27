@@ -1529,11 +1529,13 @@ go = function(tab, extra){ if (tab === 'user' && S.tab !== 'user') S.prevTab = S
 
 
 // ---------- treinos montados pelo coach e biblioteca ----------
-function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0, desc:i.desc || ''})); }
+function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0, desc:i.desc || '', sr:+i.sr || 0, rmin:+i.rmin || 0, rmax:+i.rmax || 0})); }
 const roundLoad = x => x >= 20 ? Math.round(x/2.5)*2.5 : Math.max(1, Math.round(x));
 const isWarm = t => t === 'A' || t === 'P';
 const prepTxt = i => [i.aq ? i.aq+' aquec.' : '', i.ap ? i.ap+' aprox.' : ''].filter(Boolean).join(' + ');
-const prescrTxt = i => [prepTxt(i), i.prescr, i.desc ? 'descanso '+i.desc : ''].filter(Boolean).join(' · ');
+const repsTxt = i => !i.rmin && !i.rmax ? '' : (i.rmin && i.rmax && i.rmin !== i.rmax) ? i.rmin+'-'+i.rmax : String(i.rmax || i.rmin);
+const trabTxt = i => i.sr || repsTxt(i) ? (i.sr ? i.sr+' × ' : '') + (repsTxt(i) ? repsTxt(i)+' reps' : 'séries') : '';
+const prescrTxt = i => [prepTxt(i), trabTxt(i), i.prescr, i.desc ? 'descanso '+i.desc : ''].filter(Boolean).join(' · ');
 function prepSets(aq, ap, base){
   const out = [];
   for (let k = 0; k < aq; k++){ const pct = Math.min(0.6, 0.4 + 0.1*k); out.push({t:'A', r:'', kg:'', phR:10, phKg: base ? roundLoad(base*pct) : ''}); }
@@ -1553,15 +1555,17 @@ function openCoach(id, cur){
   go('coach');
 }
 function coachBlock(d, it, idx){
-  const pr = el('input',{placeholder:'Séries de trabalho. Ex.: 3 × 10-12 · 60s de descanso', value: it.prescr || '', style:'width:100%;margin-top:8px', oninput: e => { it.prescr = e.target.value; }});
-  const num = (k, lbl) => el('div',{style:'flex:1'}, el('label',{text:lbl, style:'font-size:12px'}),
-    el('select',{style:'width:100%', onchange: e => { it[k] = +e.target.value; }}, ...[0,1,2,3].map(n => el('option',{value:n, text: n ? String(n) : 'Nenhuma', selected: (+it[k] || 0) === n}))));
+  const pr = el('input',{placeholder:'Observação (opcional). Ex.: unilateral, quadril a 45°', value: it.prescr || '', style:'width:100%;margin-top:8px', oninput: e => { it.prescr = e.target.value; }});
+  const sel = (k, lbl, max, zero) => el('div',{style:'flex:1'}, el('label',{text:lbl, style:'font-size:12px'}),
+    el('select',{style:'width:100%', onchange: e => { it[k] = +e.target.value; }}, ...[...Array(max+1).keys()].map(n => el('option',{value:n, text: n ? String(n) : zero, selected: (+it[k] || 0) === n}))));
+  const num = (k, lbl) => sel(k, lbl, 3, 'Nenhuma');
+  const trab = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, sel('sr','Séries',4,'—'), sel('rmin','Reps de',20,'—'), sel('rmax','até',20,'—'));
   const prep = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, num('aq','Aquecimento'), num('ap','Aproximação (feeder)'));
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
       el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
-    prep, pr, desc);
+    trab, prep, desc, pr);
 }
 function coachView(){
   const d = S.draft;
@@ -1601,7 +1605,7 @@ function startLogFromAssigned(){
   S.draft = {id:newId(), date:today(), nome:at.nome || '', itens: treinoItens(at.itens).map(i => {
     const last = lastOf(i.ex);
     let work = last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}];
-    const m = String(i.prescr || '').match(/^\s*(\d+)\s*[x×]/i), n = m ? Math.min(10, +m[1]) : 0;
+    const m = String(i.prescr || '').match(/^\s*(\d+)\s*[x×]/i), n = i.sr || (m ? Math.min(10, +m[1]) : 0);
     if (n){ const ref = work[work.length-1]; work = [...Array(n)].map((_, k) => ({...(work[k] || ref)})); }
     const base = last ? Math.max(0, ...last.sets.map(x => +x.kg || 0)) : 0;
     return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, desc:i.desc, sets:[...prepSets(i.aq, i.ap, base), ...work]};
