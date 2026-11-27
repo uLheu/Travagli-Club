@@ -1109,6 +1109,7 @@ function areaView(uid, f, avs){
         el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
         el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:n+(n===1?' exercício':' exercícios')}),
         el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
+      wrap.append(el('button',{class:'link', style:'display:block;margin:0 0 14px;color:var(--mut);font-size:13px', text:'📓 Ver histórico (séries e cargas)', onclick:() => go('logbook')}));
     } else wrap.append(el('button',{class:'btn', style:'margin:0 0 14px', text:'📓 Meu logbook (séries e cargas)', onclick:() => go('logbook')}));
   }
   const pi = planInfo(f);
