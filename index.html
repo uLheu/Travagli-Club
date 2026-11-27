@@ -397,6 +397,14 @@ async function boot(){
     for (const d of snap.docs){ const v = {id:d.id, ...d.data()}; if (!m.has(v.c)) m.set(v.c, []); m.get(v.c).push(v); }
     S.comments = m; schedule(); refreshOpenComments();
   }, onErr);
+  db.collection('sessoes/'+S.me).onSnapshot(snap => {
+    S.sessoes = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0));
+    schedule();
+  }, onErr);
+  db.collection('exercicios').onSnapshot(snap => {
+    S.exCustom = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    schedule();
+  }, onErr);
 
   document.querySelectorAll('.tabs [data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
   $('#meBtn').addEventListener('click', () => go('me'));
@@ -435,6 +443,9 @@ async function render(){
   else if (S.tab === 'area') view = S.isOwner ? alunosView() : areaView(S.me, S.myFicha, S.myAvs);
   else if (S.tab === 'ficha') view = fichaView();
   else if (S.tab === 'me') view = userView(S.me);
+  else if (S.tab === 'logbook') view = logbookView();
+  else if (S.tab === 'logsess') view = sessionView();
+  else if (S.tab === 'logpick') view = pickerView();
   else if (S.tab === 'user') view = userView(S.viewUser);
   const y = window.scrollY;
   main.replaceChildren(view);
@@ -1005,7 +1016,7 @@ function areaView(uid, f, avs){
   const wrap = el('div');
   if (f == null || avs == null){ wrap.append(el('div',{class:'loading', text:'Carregando seu plano…'})); return wrap; }
   const isMe = uid === S.me;
-  if (isMe) wrap.append(el('h2',{text:'Meu plano'}));
+  if (isMe) wrap.append(el('h2',{text:'Meu plano'}), el('button',{class:'btn', style:'margin:0 0 14px', text:'📓 Meu logbook (séries e cargas)', onclick:() => go('logbook')}));
   const pi = planInfo(f);
   // plano
   if (f.tipo || pi){
@@ -1439,6 +1450,162 @@ function editProfile(){
 const _go = go;
 go = function(tab, extra){ if (tab === 'user' && S.tab !== 'user') S.prevTab = S.tab; _go(tab, extra); };
 
+
+
+// ---------- logbook: sessões, séries e cargas ----------
+const EX_SEED = [
+ ['supino-reto-barra','Supino reto (barra)','Peito'],['supino-reto-halter','Supino reto (halter)','Peito'],
+ ['supino-inclinado-barra','Supino inclinado (barra)','Peito'],['supino-inclinado-halter','Supino inclinado (halter)','Peito'],
+ ['supino-inclinado-smith','Supino inclinado (Smith)','Peito'],['supino-inclinado-maquina','Supino inclinado articulado (máquina)','Peito'],
+ ['supino-articulado-maquina','Supino articulado (máquina)','Peito'],['supino-declinado-barra','Supino declinado (barra)','Peito'],
+ ['supino-declinado-halter','Supino declinado (halter)','Peito'],['supino-declinado-maquina','Supino declinado (máquina)','Peito'],
+ ['crucifixo-halter','Crucifixo (halter)','Peito'],['crucifixo-maquina','Crucifixo (máquina peck deck)','Peito'],
+ ['cross-over','Cross-over (polia)','Peito'],['flexao','Flexão de braço','Peito'],
+ ['puxada-frente','Puxada frontal (pulley)','Costas'],['puxada-triangulo','Puxada com triângulo','Costas'],
+ ['remada-curvada-barra','Remada curvada (barra)','Costas'],['remada-curvada-halter','Remada curvada (halter)','Costas'],
+ ['remada-unilateral','Remada unilateral (serrote)','Costas'],['remada-maquina','Remada na máquina','Costas'],
+ ['remada-cavalinho','Remada cavalinho','Costas'],['pulldown-corda','Pulldown com corda','Costas'],
+ ['barra-fixa','Barra fixa','Costas'],['levantamento-terra','Levantamento terra','Costas'],
+ ['agachamento-livre','Agachamento livre (barra)','Pernas'],['agachamento-smith','Agachamento no Smith','Pernas'],
+ ['agachamento-goblet','Agachamento goblet','Pernas'],['agachamento-hack','Agachamento hack','Pernas'],
+ ['leg-press-45','Leg press 45°','Pernas'],['leg-press-horizontal','Leg press horizontal','Pernas'],
+ ['cadeira-extensora','Cadeira extensora','Pernas'],['cadeira-flexora','Cadeira flexora','Pernas'],
+ ['mesa-flexora','Mesa flexora','Pernas'],['stiff-barra','Stiff (barra)','Pernas'],['stiff-halter','Stiff (halter)','Pernas'],
+ ['afundo-halter','Afundo (halter)','Pernas'],['passada','Passada','Pernas'],['avanco-bulgaro','Passada búlgara','Pernas'],
+ ['panturrilha-em-pe','Panturrilha em pé','Pernas'],['panturrilha-sentado','Panturrilha sentado','Pernas'],
+ ['cadeira-abdutora','Cadeira abdutora','Glúteos'],['cadeira-adutora','Cadeira adutora','Glúteos'],
+ ['elevacao-pelvica','Elevação pélvica','Glúteos'],['hip-thrust','Hip thrust','Glúteos'],
+ ['gluteo-polia','Glúteo no cabo (coice)','Glúteos'],
+ ['desenvolvimento-halter','Desenvolvimento (halter)','Ombros'],['desenvolvimento-barra','Desenvolvimento (barra)','Ombros'],
+ ['desenvolvimento-maquina','Desenvolvimento articulado (máquina)','Ombros'],['desenvolvimento-smith','Desenvolvimento no Smith','Ombros'],
+ ['elevacao-lateral-halter','Elevação lateral (halter)','Ombros'],['elevacao-lateral-cabo','Elevação lateral (cabo)','Ombros'],
+ ['elevacao-frontal','Elevação frontal','Ombros'],['crucifixo-inverso-maquina','Crucifixo inverso (máquina)','Ombros'],
+ ['face-pull','Face pull','Ombros'],['encolhimento-halter','Encolhimento (halter)','Ombros'],
+ ['rosca-direta-barra','Rosca direta (barra)','Bíceps'],['rosca-direta-halter','Rosca direta (halter)','Bíceps'],
+ ['rosca-alternada','Rosca alternada (halter)','Bíceps'],['rosca-scott','Rosca Scott (máquina)','Bíceps'],
+ ['rosca-martelo','Rosca martelo','Bíceps'],['rosca-polia','Rosca na polia','Bíceps'],
+ ['triceps-corda','Tríceps corda (polia)','Tríceps'],['triceps-barra-polia','Tríceps barra (polia)','Tríceps'],
+ ['triceps-testa','Tríceps testa','Tríceps'],['triceps-frances-halter','Tríceps francês (halter)','Tríceps'],
+ ['triceps-coice','Tríceps coice','Tríceps'],['mergulho-banco','Mergulho no banco','Tríceps'],
+ ['triceps-maquina','Tríceps na máquina','Tríceps'],['supino-fechado','Supino fechado','Tríceps'],
+ ['abdominal-supra','Abdominal supra','Abdômen'],['abdominal-infra','Abdominal infra','Abdômen'],
+ ['abdominal-maquina','Abdominal na máquina','Abdômen'],['prancha','Prancha','Abdômen'],
+ ['abdominal-polia','Abdominal na polia','Abdômen'],['russian-twist','Russian twist','Abdômen'],
+ ['elevacao-pernas','Elevação de pernas','Abdômen'],
+ ['skierg','SkiErg','Hyrox/Cardio'],['sled-push','Sled push (trenó)','Hyrox/Cardio'],
+ ['sled-pull','Sled pull (trenó)','Hyrox/Cardio'],['burpee-broad-jump','Burpee broad jump','Hyrox/Cardio'],
+ ['remo-ergometro','Remo (ergômetro)','Hyrox/Cardio'],['farmers-carry','Farmer’s carry','Hyrox/Cardio'],
+ ['sandbag-lunges','Sandbag lunges','Hyrox/Cardio'],['wall-balls','Wall balls','Hyrox/Cardio'],
+ ['corrida-esteira','Corrida (esteira)','Hyrox/Cardio'],['bike-ergometrica','Bike ergométrica','Hyrox/Cardio'],
+ ['caminhada-esteira','Caminhada (esteira)','Hyrox/Cardio'],
+ ['kettlebell-swing','Kettlebell swing','Funcional'],['clean-jerk','Clean and jerk','Funcional'],
+ ['thruster','Thruster','Funcional'],['box-jump','Box jump','Funcional'],['battle-rope','Battle rope','Funcional'],
+ ['burpee','Burpee','Funcional'],['mountain-climber','Mountain climber','Funcional'],['corda-pular','Corda (pular)','Funcional'],
+];
+const exAll = () => [...EX_SEED, ...(S.exCustom || []).map(c => [c.id, c.nome, c.grupo || 'Outro'])];
+const exNome = id => { const e = exAll().find(x => x[0] === id); return e ? e[1] : id; };
+function lastOf(exId){
+  for (const s of (S.sessoes || [])){
+    const it = (s.itens || []).find(i => i.ex === exId);
+    if (it) return {date:s.date, sets:it.sets || []};
+  }
+  return null;
+}
+const fmtSets = sets => sets.map(x => (x.r ?? '–')+'×'+(x.kg != null && x.kg !== '' ? x.kg+'kg' : '—')).join(' · ');
+
+function logbookView(){
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Plano', onclick:() => go('area')}),
+    el('h2',{text:'Meu logbook', style:'margin:0'})));
+  wrap.append(el('button',{class:'btn', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draft = {id:newId(), date:today(), itens:[]}; go('logsess'); }}));
+  const list = S.sessoes || [];
+  if (!list.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'📓'}), 'Nenhum treino registrado ainda.')); return wrap; }
+  for (const s of list.slice(0, 60)){
+    const itens = s.itens || [];
+    wrap.append(el('div',{class:'card pad', style:'margin-bottom:10px'},
+      el('div',{class:'row'}, el('b',{text:fmtDate(s.date)}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
+      ...itens.map(i => el('div',{style:'margin-top:10px'}, el('div',{text:i.nome || exNome(i.ex)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(i.sets || [])}))),
+      el('div',{class:'row', style:'margin-top:10px'}, el('button',{class:'link', style:'color:var(--mut);font-size:13px;margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este treino?', 'O histórico de cargas deste dia some.', () => w(() => S.db.doc('sessoes/'+S.me+'/'+s.id).delete(), 'Treino apagado'))}))));
+  }
+  return wrap;
+}
+
+function sessionView(){
+  if (!S.draft){ go('logbook'); return el('div'); }
+  const d = S.draft;
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Cancelar', onclick:() => { S.draft = null; go('logbook'); }}),
+    el('h2',{text:'Novo treino', style:'margin:0'})));
+  wrap.append(el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); }}));
+  if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
+  d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
+  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
+  const ok = d.itens.some(i => i.sets.some(s => s.r || s.kg));
+  wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !ok, onclick: async () => {
+    const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), sets:i.sets.filter(s => s.r || s.kg).map(s => ({
+      r: s.r === '' || s.r == null ? null : Number(s.r),
+      kg: s.kg === '' || s.kg == null ? null : Number(String(s.kg).replace(',', '.'))}))})).filter(i => i.sets.length);
+    if (!itens.length){ toast('Preencha pelo menos uma série'); return; }
+    const data = {date:d.date, ts:Date.now(), itens};
+    const saved = await w(() => S.db.doc('sessoes/'+S.me+'/'+d.id).set(data), 'Treino salvo ✓');
+    if (saved){ S.draft = null; go('logbook'); }
+  }}));
+  return wrap;
+}
+
+function exBlock(d, it, idx){
+  const last = lastOf(it.ex);
+  return el('div',{class:'card pad', style:'margin-top:10px'},
+    el('div',{class:'row'}, el('b',{text:exNome(it.ex)}),
+      el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
+    el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
+    ...it.sets.map((s, si) => el('div',{class:'row', style:'gap:6px;margin-top:8px;align-items:center'},
+      el('span',{class:'mut', style:'width:30px;font-size:13px', text:(si+1)+'ª'}),
+      el('input',{type:'number', inputmode:'numeric', placeholder:'reps', value: s.r ?? '', style:'width:84px', oninput: e => { s.r = e.target.value; }}),
+      el('input',{type:'number', inputmode:'decimal', placeholder:'kg', value: s.kg ?? '', style:'width:96px', oninput: e => { s.kg = e.target.value; }}),
+      el('button',{class:'link', style:'color:var(--mut);margin-left:auto', text:'✕', onclick:() => { it.sets.splice(si,1); if (!it.sets.length) it.sets.push({r:'',kg:''}); render(); }}))),
+    el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const p = it.sets[it.sets.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); render(); }}));
+}
+
+function addEx(id){
+  const d = S.draft; if (!d) return;
+  const last = lastOf(id);
+  d.itens.push({ex:id, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]});
+  S.pickQ = ''; S.pickG = 'Todos';
+  go('logsess');
+}
+
+function pickerView(){
+  if (!S.draft){ go('logbook'); return el('div'); }
+  const wrap = el('div');
+  const res = el('div',{style:'margin-top:10px'});
+  const drawRes = () => {
+    const q = (S.pickQ || '').trim();
+    const termo = q.toLowerCase();
+    const curG = S.pickG || 'Todos';
+    const arr = exAll().filter(e => (curG === 'Todos' || e[2] === curG) && (!termo || e[1].toLowerCase().includes(termo)));
+    res.replaceChildren(
+      ...arr.slice(0, 100).map(e => el('button',{class:'card pad', style:'display:block;width:100%;text-align:left;margin-bottom:8px;cursor:pointer', onclick:() => addEx(e[0])},
+        el('div',{text:e[1]}), el('div',{class:'mut', style:'font-size:12px', text:e[2]}))),
+      (termo && !arr.some(e => e[1].toLowerCase() === termo)) ? el('button',{class:'btn ghost', style:'width:100%', text:'Cadastrar "'+q+'"', onclick: async () => {
+        const id = 'x-'+newId();
+        const grupo = curG === 'Todos' ? 'Outro' : curG;
+        const ok = await w(() => S.db.doc('exercicios/'+id).set({nome:q.slice(0,80), grupo}), 'Exercício cadastrado ✓');
+        if (ok) addEx(id);
+      }}) : null);
+  };
+  const grupos = ['Todos', ...new Set(exAll().map(e => e[2]))];
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Voltar', onclick:() => go('logsess')}),
+    el('h2',{text:'Adicionar exercício', style:'margin:0'})));
+  wrap.append(el('input',{type:'search', placeholder:'Buscar (ex.: supino inclinado)', value: S.pickQ || '', style:'width:100%;margin-top:12px', oninput: e => { S.pickQ = e.target.value; drawRes(); }}));
+  wrap.append(el('div',{class:'chips', style:'margin-top:10px'}, ...grupos.map(g => el('button',{class:'chip'+((S.pickG||'Todos')===g?' on':''), text:g, onclick:() => { S.pickG = g; render(); }}))));
+  wrap.append(res);
+  drawRes();
+  return wrap;
+}
 
 boot().catch(e => { console.error(e); $('#main').replaceChildren(el('div',{class:'empty',text:'Algo deu errado ao abrir o app. Recarregue a página.'})); });
 })();
