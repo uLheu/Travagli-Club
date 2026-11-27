@@ -1201,7 +1201,7 @@ function fichaView(){
   const cur = (S.fichaTreinos || [])[0];
   wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treino no caderno do aluno'}),
     cur ? el('div',{}, el('div',{class:'mut', style:'margin-top:6px', text: cur.nome+' · enviado '+fmtDate(dstr(new Date(cur.ts)))}),
-      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))))
+      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))))
       : el('div',{class:'mut', style:'margin-top:6px', text:'Nenhum treino enviado ainda.'}),
     el('div',{class:'row', style:'gap:8px;margin-top:12px'},
       el('button',{class:'btn sm', style:'flex:1', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)}),
@@ -1545,13 +1545,14 @@ go = function(tab, extra){ if (tab === 'user' && S.tab !== 'user') S.prevTab = S
 
 
 // ---------- treinos montados pelo coach e biblioteca ----------
-function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0, desc:i.desc || '', sr:+i.sr || 0, rmin:+i.rmin || 0, rmax:+i.rmax || 0})); }
+function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0, desc:i.desc || '', sr:+i.sr || 0, rmin:+i.rmin || 0, rmax:+i.rmax || 0, uni:!!i.uni})); }
 const roundLoad = x => x >= 20 ? Math.round(x/2.5)*2.5 : Math.max(1, Math.round(x));
 const isWarm = t => t === 'A' || t === 'P';
 const prepTxt = i => [i.aq ? i.aq+' aquec.' : '', i.ap ? i.ap+' aprox.' : ''].filter(Boolean).join(' + ');
 const repsTxt = i => !i.rmin && !i.rmax ? '' : (i.rmin && i.rmax && i.rmin !== i.rmax) ? i.rmin+'-'+i.rmax : String(i.rmax || i.rmin);
 const trabTxt = i => i.sr || repsTxt(i) ? (i.sr ? i.sr+' × ' : '') + (repsTxt(i) ? repsTxt(i)+' reps' : 'séries') : '';
-const prescrTxt = i => [prepTxt(i), trabTxt(i), i.prescr, i.desc ? 'descanso '+i.desc : ''].filter(Boolean).join(' · ');
+const uniTag = i => i.uni ? ' (unilateral)' : '';
+const prescrTxt = i => [i.uni ? 'unilateral, reps por lado' : '', prepTxt(i), trabTxt(i), i.prescr, i.desc ? 'descanso '+i.desc : ''].filter(Boolean).join(' · ');
 function prepSets(aq, ap, base){
   const out = [];
   for (let k = 0; k < aq; k++){ const pct = Math.min(0.6, 0.4 + 0.1*k); out.push({t:'A', r:'', kg:'', phR:10, phKg: base ? roundLoad(base*pct) : ''}); }
@@ -1575,13 +1576,14 @@ function coachBlock(d, it, idx){
   const sel = (k, lbl, max, zero) => el('div',{style:'flex:1'}, el('label',{text:lbl, style:'font-size:12px'}),
     el('select',{style:'width:100%', onchange: e => { it[k] = +e.target.value; }}, ...[...Array(max+1).keys()].map(n => el('option',{value:n, text: n ? String(n) : zero, selected: (+it[k] || 0) === n}))));
   const num = (k, lbl) => sel(k, lbl, 3, 'Nenhuma');
+  const uniBtn = el('button',{class:'chip'+(it.uni ? ' on' : ''), style:'margin-top:8px', text:'Unilateral', onclick:() => { it.uni = !it.uni; render(); }});
   const trab = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, sel('sr','Séries',4,'—'), sel('rmin','Reps de',20,'—'), sel('rmax','até',20,'—'));
   const prep = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, num('aq','Aquecimento'), num('ap','Aproximação (feeder)'));
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
       el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
-    trab, prep, desc, pr);
+    uniBtn, trab, prep, desc, pr);
 }
 function coachView(){
   const d = S.draft;
@@ -1624,7 +1626,7 @@ function startLogFromAssigned(){
     const m = String(i.prescr || '').match(/^\s*(\d+)\s*[x×]/i), n = i.sr || (m ? Math.min(10, +m[1]) : 0);
     if (n){ const ref = work[work.length-1]; work = [...Array(n)].map((_, k) => ({...(work[k] || ref)})); }
     const base = last ? Math.max(0, ...last.sets.map(x => +x.kg || 0)) : 0;
-    return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, desc:i.desc, sets:[...prepSets(i.aq, i.ap, base), ...work]};
+    return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, desc:i.desc, uni:i.uni, sets:[...prepSets(i.aq, i.ap, base), ...work]};
   })};
   saveDraft(); go('logsess');
 }
@@ -1649,7 +1651,7 @@ function biblioView(){
     const top = el('div',{class:'row', style:'align-items:center;gap:10px'});
     if (!loadMode) top.append(el('input',{type:'checkbox', checked: sel.has(t.id), onchange: e => { if (e.target.checked) sel.add(t.id); else sel.delete(t.id); render(); }}));
     top.append(el('div',{style:'min-width:0;flex:1'}, el('div',{class:'nm', text:t.nome}), el('div',{class:'mut', style:'font-size:12px', text:(t.pasta ? t.pasta+' · ' : '') + itens.length+(itens.length===1?' exercício':' exercícios')})));
-    card.append(top, el('div',{class:'mut', style:'font-size:13px;margin-top:6px', text: itens.map(i => i.nome || exNome(i.ex)).join(' · ')}));
+    card.append(top, el('div',{class:'mut', style:'font-size:13px;margin-top:6px', text: itens.map(i => (i.nome || exNome(i.ex))+uniTag(i)).join(' · ')}));
     if (loadMode){
       card.style.cursor = 'pointer';
       card.onclick = () => { const d = S.draft; d.itens = mergeItens(d.itens, itens); if (!d.nome) d.nome = t.nome; S.libMode = null; go('coach'); };
@@ -1684,6 +1686,8 @@ const EX_SEED = [
  ['remada-curvada-barra','Remada curvada (barra)','Costas'],['remada-curvada-halter','Remada curvada (halter)','Costas'],
  ['remada-unilateral','Remada unilateral (serrote)','Costas'],['remada-maquina','Remada na máquina','Costas'],
  ['remada-cavalinho','Remada cavalinho','Costas'],['pulldown-corda','Pulldown com corda','Costas'],
+ ['agachamento-sumo-maquina','Agachamento sumô (máquina)','Pernas'],
+ ['pulldown-maquina','Pulldown (máquina)','Costas'],['remada-dy-row','Remada DY Row (máquina)','Costas'],['remada-hammer-neutra','Remada Hammer (pegada neutra)','Costas'],
  ['barra-fixa','Barra fixa','Costas'],['levantamento-terra','Levantamento terra','Costas'],
  ['agachamento-livre','Agachamento livre (barra)','Pernas'],['agachamento-smith','Agachamento no Smith','Pernas'],
  ['agachamento-goblet','Agachamento goblet','Pernas'],['agachamento-hack','Agachamento hack','Pernas'],
@@ -1745,7 +1749,7 @@ function logbookView(){
   } else if (S.assigned){
     wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
       el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
-      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
+      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
       el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:() => {
         if (pend && (pend.itens || []).length) return confirmSheet('Começar um treino novo?', 'Você tem um treino em andamento que ainda não foi salvo. Ele será descartado.', () => { clearDraft(); startLogFromAssigned(); }, 'Começar novo');
         startLogFromAssigned();
@@ -1764,7 +1768,7 @@ function sessList(list, mine){
     const itens = s.itens || [];
     box.append(el('div',{class:'card pad', style:'margin-bottom:10px'},
       el('div',{class:'row'}, el('b',{text:fmtDate(s.date)+(s.nome ? ' · '+s.nome : '')}), el('span',{class:'mut', style:'margin-left:auto', text: itens.length+(itens.length===1?' exercício':' exercícios')})),
-      ...itens.map(i => el('div',{style:'margin-top:10px'}, el('div',{text:i.nome || exNome(i.ex)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(i.sets || [])}))),
+      ...itens.map(i => el('div',{style:'margin-top:10px'}, el('div',{text:(i.nome || exNome(i.ex))+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(i.sets || [])}))),
       mine ? el('div',{class:'row', style:'margin-top:10px'}, el('button',{class:'link', style:'color:var(--mut);font-size:13px;margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este treino?', 'O histórico de cargas deste dia some.', () => w(() => S.db.doc('sessoes/'+S.me+'/'+s.id).delete(), 'Treino apagado'))})) : null));
   }
   return box;
@@ -1796,6 +1800,7 @@ function exMenu(d, idx){
     b('📈 Histórico do exercício', () => exHistory(it.ex, S.sessoes)),
     idx > 0 ? b('↑ Mover para cima', () => mv(-1)) : null,
     idx < d.itens.length - 1 ? b('↓ Mover para baixo', () => mv(1)) : null,
+    S.isOwner ? b(it.uni ? 'Tirar unilateral' : 'Marcar como unilateral', () => { it.uni = !it.uni; saveDraft(); render(); }) : null,
     b('＋ Adicionar série', () => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }),
     S.isOwner ? b('Remover do treino', () => { d.itens.splice(idx, 1); saveDraft(); render(); }, 'danger') : null));
 }
@@ -1832,7 +1837,7 @@ function sessionView(){
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
   if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
   wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !filled(), onclick: async () => {
-    const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), sets:i.sets.filter(s => s.r || s.kg).map(s => ({ ...(s.t ? {t:s.t} : {}),
+    const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), ...(i.uni ? {uni:true} : {}), sets:i.sets.filter(s => s.r || s.kg).map(s => ({ ...(s.t ? {t:s.t} : {}),
       r: s.r === '' || s.r == null ? null : Number(s.r),
       kg: s.kg === '' || s.kg == null ? null : Number(String(s.kg).replace(',', '.'))}))})).filter(i => i.sets.length);
     if (!itens.length){ toast('Preencha pelo menos uma série'); return; }
@@ -1858,7 +1863,7 @@ function exBlock(d, it, idx){
       el('button',{class:'link', style:'color:var(--mut)', text:'✕', 'aria-label':'Apagar série', onclick:() => { it.sets.splice(si, 1); if (!it.sets.some(x => !isWarm(x.t))) it.sets.push({r:'', kg:''}); saveDraft(); render(); }}));
   });
   return el('div',{class:'card pad', style:'margin-top:10px'},
-    el('div',{class:'row', style:'align-items:center'}, el('b',{text:exNome(it.ex), style:'flex:1'}),
+    el('div',{class:'row', style:'align-items:center'}, el('b',{text:exNome(it.ex)+uniTag(it), style:'flex:1'}),
       el('button',{class:'link', style:'font-size:22px;line-height:1;padding:0 6px;color:var(--tx)', text:'…', 'aria-label':'Opções do exercício', onclick:() => exMenu(d, idx)})),
     (it.prescr || it.aq || it.ap || it.desc) ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+prescrTxt(it)}) : null,
     el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
