@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Travagli Club</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#05070b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Travagli">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -143,6 +148,136 @@
 </div>
 <main id="main"><div class="loading">Carregando…</div></main>
 <button class="fab" id="plusBtn" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Registrar treino</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== Adaptador Supabase: imita a API que o app usava (claude.use) ===== */
+const SUPABASE_URL = 'https://psyabagzgkskdwldcmto.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ibCLqMeZ-CxQnxRz1eb9NQ_Lye9ON9Q';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, detectSessionInUrl: true } });
+const sessionReady = sb.auth.getSession().then(r => r.data.session);
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const subs = new Set();
+let rtStarted = false;
+
+function startRealtime(){
+  if (rtStarted) return; rtStarted = true;
+  sb.channel('docs-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'docs' }, payload => {
+    const p = (payload.new && payload.new.path) || (payload.old && payload.old.path) || null;
+    subs.forEach(s => { if (!p || s.match(p)) s.refresh(); });
+  }).subscribe();
+}
+function watch(match, get, cb, onErr){
+  const sub = { match, refresh: async () => { try { cb(await get()); } catch (e) { onErr && onErr(e); } } };
+  subs.add(sub); startRealtime(); sub.refresh();
+  return () => subs.delete(sub);
+}
+async function selectAll(build){
+  const out = [], PAGE = 1000;
+  for (let from = 0; ; from += PAGE){
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+const snapOf = rows => ({ docs: rows.map(r => ({ id: r.path.split('/').pop(), exists: true, data: () => r.data })), metadata: { fromCache: false } });
+
+class Col {
+  constructor(path, o = {}){ this.path = path; this.o = o; }
+  orderBy(field, dir = 'asc'){ return new Col(this.path, { ...this.o, field, dir }); }
+  limit(n){ return new Col(this.path, { ...this.o, limit: n }); }
+  doc(id){ return new Ref(this.path + '/' + (id || newId())); }
+  async add(data){ const r = this.doc(); await r.set(data); return r; }
+  async rows(){
+    let rows = await selectAll(() => sb.from('docs').select('path,data').like('path', this.path + '/%').order('path'));
+    rows = rows.filter(r => !r.path.slice(this.path.length + 1).includes('/'));
+    const f = this.o.field;
+    if (f) rows.sort((a, b) => { const x = a.data[f], y = b.data[f]; const r = x > y ? 1 : x < y ? -1 : 0; return this.o.dir === 'desc' ? -r : r; });
+    if (this.o.limit) rows = rows.slice(0, this.o.limit);
+    return rows;
+  }
+  async get(){ return snapOf(await this.rows()); }
+  onSnapshot(cb, onErr){ const pre = this.path + '/'; return watch(p => p.startsWith(pre), () => this.get(), cb, onErr); }
+}
+
+class Ref {
+  constructor(path){ this.path = path; this.id = path.split('/').pop(); }
+  async get(){
+    const { data, error } = await sb.from('docs').select('data').eq('path', this.path).maybeSingle();
+    if (error) throw error;
+    return { id: this.id, exists: !!data, data: () => (data ? data.data : undefined) };
+  }
+  async set(d){
+    const { error } = await sb.from('docs').upsert({ path: this.path, data: d });
+    if (error) throw error;
+  }
+  async update(patch){
+    const cur = await this.get();
+    if (!cur.exists) throw new Error('Documento não existe');
+    await this.set({ ...cur.data(), ...patch });
+  }
+  async delete(){
+    const { error } = await sb.from('docs').delete().eq('path', this.path);
+    if (error) throw error;
+  }
+  onSnapshot(cb, onErr){ const p0 = this.path; return watch(p => p === p0, () => this.get(), cb, onErr); }
+}
+
+const DB = { collection: p => new Col(p), doc: p => new Ref(p) };
+
+async function currentUser(){ const s = await sessionReady; return s && s.user; }
+async function isOwnerId(id){
+  const { data } = await sb.from('docs').select('data').eq('path', 'config/owner').maybeSingle();
+  return !!(data && data.data && data.data.uid === id);
+}
+const USER = {
+  me: async () => { const u = await currentUser(); return { id: u.id, isOwner: await isOwnerId(u.id) }; },
+  id: async () => (await currentUser()).id,
+  can: async () => true,
+  profiles: async () => ({})
+};
+
+function showLogin(){
+  if (document.getElementById('lgBox')) return;
+  const box = document.createElement('div');
+  box.id = 'lgBox';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#05070b;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,sans-serif;color:#eef3fb';
+  box.innerHTML = '<div style="max-width:340px;width:100%;text-align:center">'
+    + '<img src="icons/icon-512.png" alt="" style="width:110px;height:110px;border-radius:24px">'
+    + '<h2 style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;margin:16px 0 6px">Entrar no Travagli Club</h2>'
+    + '<p style="color:#7f8ca0;font-size:14px;line-height:1.5">Digite o e-mail que o Léo usou para te convidar. Vamos mandar um link de acesso.</p>'
+    + '<input id="lgEmail" type="email" autocomplete="email" placeholder="seu@email.com" style="width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #1f2a38;background:#0d1219;color:#eef3fb;font-size:16px;margin-top:12px">'
+    + '<button id="lgBtn" style="width:100%;margin-top:10px;padding:14px;border-radius:12px;border:0;background:#1f9fe3;color:#fff;font-weight:700;font-size:16px">Receber link de acesso</button>'
+    + '<p id="lgMsg" style="font-size:14px;color:#7f8ca0;min-height:20px"></p></div>';
+  document.body.appendChild(box);
+  box.querySelector('#lgBtn').onclick = async () => {
+    const email = box.querySelector('#lgEmail').value.trim();
+    const msg = box.querySelector('#lgMsg');
+    if (!email) return;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
+    msg.textContent = error ? 'Este e-mail ainda não foi convidado. Peça ao Léo para te convidar.' : 'Pronto! Confira seu e-mail e toque no link.';
+  };
+}
+
+window.claude = {
+  async use(name){
+    if (name === 'downloads') return { save: async ({ filename, data }) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(data); a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+    } };
+    const s = await sessionReady;
+    if (!s){ showLogin(); return null; }
+    startRealtime();
+    if (name === 'db') return DB;
+    if (name === 'user') return USER;
+    return null;
+  }
+};
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
 
 <script>
 (() => {
