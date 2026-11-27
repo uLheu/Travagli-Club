@@ -421,6 +421,18 @@ async function boot(){
     schedule();
   }, onErr);
 
+  if (S.isOwner){
+    db.collection('biblioteca').onSnapshot(snap => {
+      S.biblio = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (a.nome || '').localeCompare(b.nome || ''));
+      schedule();
+    }, onErr);
+  } else {
+    db.collection('treinos/'+S.me).onSnapshot(snap => {
+      S.assigned = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0))[0] || null;
+      schedule();
+    }, onErr);
+  }
+
   document.querySelectorAll('.tabs [data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
   $('#meBtn').addEventListener('click', () => go('me'));
   $('#plusBtn').addEventListener('click', openCheckin);
@@ -443,7 +455,7 @@ async function render(){
     main.replaceChildren(onboarding());
     return;
   }
-  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = S.tab === 'ficha' ? 'none' : 'flex';
+  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = ['ficha','coach','biblio'].includes(S.tab) ? 'none' : 'flex';
   $('#meBtn').replaceChildren(avatar(S.me));
   const ids = [...S.members.keys()];
   try { S.profiles = await S.user.profiles(ids); } catch(e){}
@@ -461,6 +473,8 @@ async function render(){
   else if (S.tab === 'logbook') view = logbookView();
   else if (S.tab === 'logsess') view = sessionView();
   else if (S.tab === 'logpick') view = pickerView();
+  else if (S.tab === 'coach') view = coachView();
+  else if (S.tab === 'biblio') view = biblioView();
   else if (S.tab === 'user') view = userView(S.viewUser);
   const y = window.scrollY;
   main.replaceChildren(view);
@@ -1079,7 +1093,8 @@ function areaView(uid, f, avs){
 // ---------- modo treinador ----------
 function alunosView(){
   const wrap = el('div');
-  wrap.append(el('h2',{text:'Alunos'}), el('div',{class:'mut', style:'margin:-6px 2px 12px', text:'Só você vê esta aba. Toque num aluno para lançar plano, avaliação, treino e dieta.'}));
+  wrap.append(el('h2',{text:'Alunos'}), el('div',{class:'mut', style:'margin:-6px 2px 12px', text:'Só você vê esta aba. Toque num aluno para lançar plano, avaliação, treino e dieta.'}),
+    el('button',{class:'btn ghost sm', style:'margin-bottom:12px', text:'📚 Biblioteca de treinos', onclick:() => { S.libMode = null; S.draft = null; go('biblio'); }}));
   const ids = [...S.members.keys()].filter(id => id !== S.me);
   if (!ids.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big', text:'👥'}), 'Quando seus alunos entrarem no app, eles aparecem aqui.')); return wrap; }
   const order = id => { const pi = planInfo(S.fichas.get(id)); return pi ? pi.left : 99999; };
@@ -1097,6 +1112,9 @@ function alunosView(){
 function openFicha(id){
   if (S.fichaUnsub) S.fichaUnsub();
   S.fichaUser = id; S.fichaAvs = null; S.areaView = 'edit';
+  if (S.fichaTreinoUnsub) S.fichaTreinoUnsub();
+  S.fichaTreinos = null;
+  S.fichaTreinoUnsub = S.db.collection('treinos/'+id).onSnapshot(snap => { S.fichaTreinos = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0)); schedule(); }, e => console.warn(e));
   S.fichaUnsub = S.db.collection('fichas/'+id+'/avs').onSnapshot(snap => { S.fichaAvs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (a.data||'').localeCompare(b.data||'')); schedule(); }, e => console.warn(e));
   go('ficha');
 }
@@ -1133,6 +1151,13 @@ function fichaView(){
     el('label',{text:'Frequência / detalhes'}), freq,
     el('div',{class:'row', style:'gap:10px'}, el('div',{style:'flex:1'}, el('label',{text:'Início'}), ini), el('div',{style:'flex:1'}, el('label',{text:'Vencimento'}), fim)),
     el('div',{class:'mut', style:'margin-top:6px', text:'O vencimento é calculado sozinho: personal 4 semanas, consultoria 6 semanas. Dá para ajustar.'})));
+  // treino montado (caderno do aluno)
+  const cur = (S.fichaTreinos || [])[0];
+  wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treino no caderno do aluno'}),
+    cur ? el('div',{}, el('div',{class:'mut', style:'margin-top:6px', text: cur.nome+' · enviado '+fmtDate(dstr(new Date(cur.ts)))}),
+      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:i.prescr || 'Sem prescrição'}))))
+      : el('div',{class:'mut', style:'margin-top:6px', text:'Nenhum treino enviado ainda.'}),
+    el('button',{class:'btn sm', style:'margin-top:12px', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)})));
   // avaliações
   const avs = S.fichaAvs;
   const ac = el('div',{class:'card pad'}, el('div',{class:'row'}, el('div',{class:'nm', text:'Avaliações publicadas'}), el('button',{class:'btn sm', style:'margin-left:auto', text:'📥 Colar do app', onclick:() => pasteAv(id)})));
@@ -1471,6 +1496,110 @@ go = function(tab, extra){ if (tab === 'user' && S.tab !== 'user') S.prevTab = S
 
 
 
+// ---------- treinos montados pelo coach e biblioteca ----------
+function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || ''})); }
+function mergeItens(base, extra){
+  const out = treinoItens(base);
+  for (const i of treinoItens(extra)) if (!out.some(o => o.ex === i.ex)) out.push(i);
+  return out;
+}
+function openCoach(id, cur){
+  S.coachFor = id || null;
+  S.draftKind = 'coach';
+  S.draft = {kind:'coach', id:newId(), nome:cur?.nome || '', pasta:'', itens:treinoItens(cur?.itens)};
+  go('coach');
+}
+function coachBlock(d, it, idx){
+  const pr = el('input',{placeholder:'Ex.: 3 × 10-12 · 60s de descanso', value: it.prescr || '', style:'width:100%;margin-top:8px', oninput: e => { it.prescr = e.target.value; }});
+  return el('div',{class:'card pad', style:'margin-top:10px'},
+    el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
+      el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
+    pr);
+}
+function coachView(){
+  const d = S.draft;
+  if (!d || d.kind !== 'coach'){ go(S.coachFor ? 'area' : 'biblio'); return el('div'); }
+  const id = S.coachFor;
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Voltar', onclick:() => { S.draft = null; if (id) openFicha(id); else go('biblio'); }}),
+    el('h2',{text: id ? 'Treino de '+nick(id) : (d.lib ? 'Editar treino' : 'Novo treino'), style:'margin:0'})));
+  wrap.append(el('label',{text:'Nome do treino'}), el('input',{placeholder:'Ex.: Treino A — peito e tríceps', value: d.nome || '', style:'width:100%', oninput: e => { d.nome = e.target.value; }}));
+  wrap.append(el('label',{text:'Pasta (para organizar a biblioteca)'}), el('input',{placeholder:'Ex.: Hipertrofia, Hyrox, Iniciante', value: d.pasta || '', style:'width:100%', oninput: e => { d.pasta = e.target.value; }}));
+  wrap.append(el('div',{class:'chips', style:'margin-top:12px'}, el('button',{class:'chip', text:'📚 Carregar da biblioteca', onclick:() => { S.libMode = 'load'; go('biblio'); }})));
+  if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios. No caderno do aluno eles já aparecem escolhidos.'}));
+  d.itens.forEach((it, idx) => wrap.append(coachBlock(d, it, idx)));
+  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => { S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}));
+  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:10px', text:'Salvar na biblioteca', disabled: !d.itens.length, onclick: async () => {
+    const data = {nome:(d.nome || '').trim() || 'Treino sem nome', pasta:(d.pasta || '').trim(), ts:Date.now(), itens:treinoItens(d.itens)};
+    const ok = await w(() => S.db.doc('biblioteca/'+d.id).set(data), 'Salvo na biblioteca ✓');
+    if (ok && !id){ S.draft = null; go('biblio'); }
+  }}));
+  if (id) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Enviar para o aluno', disabled: !d.itens.length, onclick: () => confirmSheet('Enviar este treino para '+nick(id)+'?', 'O treino anterior dele some e ele passa a ver só este.', () => sendTreino(id, d))}));
+  return wrap;
+}
+async function sendTreino(uid, d){
+  const itens = treinoItens(d.itens);
+  if (!itens.length) return toast('Adicione pelo menos um exercício');
+  const ok = await w(async () => {
+    const snap = await S.db.collection('treinos/'+uid).get();
+    await Promise.all(snap.docs.map(x => S.db.doc('treinos/'+uid+'/'+x.id).delete()));
+    await S.db.doc('treinos/'+uid+'/'+newId()).set({nome:(d.nome || '').trim() || 'Treino', ts:Date.now(), itens});
+  }, 'Treino enviado ✓');
+  if (ok){ S.draft = null; openFicha(uid); }
+}
+function startLogFromAssigned(){
+  const at = S.assigned; if (!at) return;
+  S.draftKind = 'log';
+  S.draft = {id:newId(), date:today(), nome:at.nome || '', itens: treinoItens(at.itens).map(i => {
+    const last = lastOf(i.ex);
+    return {ex:i.ex, nome:i.nome, prescr:i.prescr, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]};
+  })};
+  go('logsess');
+}
+function biblioView(){
+  if (!S.isOwner){ go('logbook'); return el('div'); }
+  const loadMode = S.libMode === 'load' && S.draft && S.draft.kind === 'coach';
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Voltar', onclick:() => { S.libSel = new Set(); S.libMode = null; go(loadMode ? 'coach' : 'area'); }}),
+    el('h2',{text: loadMode ? 'Escolher da biblioteca' : 'Biblioteca de treinos', style:'margin:0'})));
+  if (!S.biblio){ wrap.append(el('div',{class:'mut', text:'Carregando…'})); return wrap; }
+  if (!loadMode) wrap.append(el('button',{class:'btn ghost sm', style:'margin:12px 0', text:'＋ Novo treino (sem aluno)', onclick:() => { S.libSel = new Set(); openCoach(null, null); }}));
+  const lib = S.biblio;
+  if (!lib.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'📚'}), 'Nenhum treino salvo ainda. Monte um treino e toque em "Salvar na biblioteca".')); return wrap; }
+  const sel = S.libSel || (S.libSel = new Set());
+  const pastas = ['Todas', ...new Set(lib.map(t => t.pasta).filter(Boolean))];
+  const pf = S.libPasta || 'Todas';
+  wrap.append(el('div',{class:'chips', style:'margin:10px 0'}, ...pastas.map(p => el('button',{class:'chip'+(pf===p?' on':''), text:p, onclick:() => { S.libPasta = p; render(); }}))));
+  for (const t of lib.filter(t => pf === 'Todas' || t.pasta === pf)){
+    const itens = t.itens || [];
+    const card = el('div',{class:'card pad', style:'margin-bottom:10px'});
+    const top = el('div',{class:'row', style:'align-items:center;gap:10px'});
+    if (!loadMode) top.append(el('input',{type:'checkbox', checked: sel.has(t.id), onchange: e => { if (e.target.checked) sel.add(t.id); else sel.delete(t.id); render(); }}));
+    top.append(el('div',{style:'min-width:0;flex:1'}, el('div',{class:'nm', text:t.nome}), el('div',{class:'mut', style:'font-size:12px', text:(t.pasta ? t.pasta+' · ' : '') + itens.length+(itens.length===1?' exercício':' exercícios')})));
+    card.append(top, el('div',{class:'mut', style:'font-size:13px;margin-top:6px', text: itens.map(i => i.nome || exNome(i.ex)).join(' · ')}));
+    if (loadMode){
+      card.style.cursor = 'pointer';
+      card.onclick = () => { const d = S.draft; d.itens = mergeItens(d.itens, itens); if (!d.nome) d.nome = t.nome; S.libMode = null; go('coach'); };
+    } else {
+      card.append(el('div',{class:'row', style:'gap:14px;margin-top:10px'},
+        el('button',{class:'link', text:'Editar', onclick:() => { S.coachFor = null; S.draftKind = 'coach'; S.draft = {kind:'coach', id:t.id, nome:t.nome, pasta:t.pasta || '', itens:treinoItens(itens), lib:true}; go('coach'); }}),
+        el('button',{class:'link', text:'Duplicar', onclick:() => w(() => S.db.doc('biblioteca/'+newId()).set({nome:t.nome+' (cópia)', pasta:t.pasta || '', ts:Date.now(), itens}), 'Duplicado ✓')}),
+        el('button',{class:'link', style:'color:var(--mut);margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar "'+t.nome+'"?', 'Os alunos que já receberam este treino não são afetados.', () => w(() => S.db.doc('biblioteca/'+t.id).delete(), 'Apagado'))})));
+    }
+    wrap.append(card);
+  }
+  if (!loadMode && sel.size >= 2) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:6px', text:'Unir '+sel.size+' treinos num novo', onclick:() => {
+    const picks = lib.filter(t => sel.has(t.id));
+    let itens = []; for (const t of picks) itens = mergeItens(itens, t.itens);
+    S.libSel = new Set(); S.coachFor = null; S.draftKind = 'coach';
+    S.draft = {kind:'coach', id:newId(), nome:picks.map(t => t.nome).join(' + '), pasta:picks[0].pasta || '', itens};
+    go('coach');
+  }}));
+  return wrap;
+}
+
 // ---------- logbook: sessões, séries e cargas ----------
 const EX_SEED = [
  ['supino-reto-barra','Supino reto (barra)','Peito'],['supino-reto-halter','Supino reto (halter)','Peito'],
@@ -1537,7 +1666,16 @@ function logbookView(){
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
     el('button',{class:'link', text:'← Plano', onclick:() => go('area')}),
     el('h2',{text:'Meu logbook', style:'margin:0'})));
-  wrap.append(el('button',{class:'btn', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draft = {id:newId(), date:today(), itens:[]}; go('logsess'); }}));
+  if (S.isOwner){
+    wrap.append(el('button',{class:'btn', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; go('logsess'); }}));
+  } else if (S.assigned){
+    wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
+      el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
+      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:i.prescr || 'Sem prescrição'}))),
+      el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:startLogFromAssigned})));
+  } else {
+    wrap.append(el('div',{class:'empty', style:'margin:14px 0'}, el('div',{class:'big',text:'📋'}), 'O Léo ainda não montou um treino para você.'));
+  }
   const list = S.sessoes || [];
   if (!list.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'📓'}), 'Nenhum treino registrado ainda.')); return wrap; }
   for (const s of list.slice(0, 60)){
@@ -1556,18 +1694,18 @@ function sessionView(){
   const wrap = el('div');
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
     el('button',{class:'link', text:'← Cancelar', onclick:() => { S.draft = null; go('logbook'); }}),
-    el('h2',{text:'Novo treino', style:'margin:0'})));
+    el('h2',{text: d.nome || 'Novo treino', style:'margin:0'})));
   wrap.append(el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); }}));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
-  wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
+  if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
   const ok = d.itens.some(i => i.sets.some(s => s.r || s.kg));
   wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Salvar treino', disabled: !ok, onclick: async () => {
     const itens = d.itens.map(i => ({ex:i.ex, nome:exNome(i.ex), sets:i.sets.filter(s => s.r || s.kg).map(s => ({
       r: s.r === '' || s.r == null ? null : Number(s.r),
       kg: s.kg === '' || s.kg == null ? null : Number(String(s.kg).replace(',', '.'))}))})).filter(i => i.sets.length);
     if (!itens.length){ toast('Preencha pelo menos uma série'); return; }
-    const data = {date:d.date, ts:Date.now(), itens};
+    const data = {date:d.date, ts:Date.now(), itens, nome: d.nome || null};
     const saved = await w(() => S.db.doc('sessoes/'+S.me+'/'+d.id).set(data), 'Treino salvo ✓');
     if (saved){ S.draft = null; go('logbook'); }
   }}));
@@ -1578,7 +1716,8 @@ function exBlock(d, it, idx){
   const last = lastOf(it.ex);
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text:exNome(it.ex)}),
-      el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
+      S.isOwner ? el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }}) : null),
+    it.prescr ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+it.prescr}) : null,
     el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
     ...it.sets.map((s, si) => el('div',{class:'row', style:'gap:6px;margin-top:8px;align-items:center'},
       el('span',{class:'mut', style:'width:30px;font-size:13px', text:(si+1)+'ª'}),
@@ -1590,6 +1729,7 @@ function exBlock(d, it, idx){
 
 function addEx(id){
   const d = S.draft; if (!d) return;
+  if (S.draftKind === 'coach'){ d.itens.push({ex:id, nome:exNome(id), prescr:''}); S.pickQ = ''; S.pickG = 'Todos'; go('coach'); return; }
   const last = lastOf(id);
   d.itens.push({ex:id, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]});
   S.pickQ = ''; S.pickG = 'Todos';
@@ -1617,7 +1757,7 @@ function pickerView(){
   };
   const grupos = ['Todos', ...new Set(exAll().map(e => e[2]))];
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
-    el('button',{class:'link', text:'← Voltar', onclick:() => go('logsess')}),
+    el('button',{class:'link', text:'← Voltar', onclick:() => go(S.draftKind === 'coach' ? 'coach' : 'logsess')}),
     el('h2',{text:'Adicionar exercício', style:'margin:0'})));
   wrap.append(el('input',{type:'search', placeholder:'Buscar (ex.: supino inclinado)', value: S.pickQ || '', style:'width:100%;margin-top:12px', oninput: e => { S.pickQ = e.target.value; drawRes(); }}));
   wrap.append(el('div',{class:'chips', style:'margin-top:10px'}, ...grupos.map(g => el('button',{class:'chip'+((S.pickG||'Todos')===g?' on':''), text:g, onclick:() => { S.pickG = g; render(); }}))));
