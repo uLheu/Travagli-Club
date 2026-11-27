@@ -143,6 +143,11 @@
   .wbar.cur i{background:var(--acc)} .wbar b{color:var(--tx);font-size:12px}
   .pick{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
   .pick input{width:22px;height:22px;accent-color:var(--acc);flex:none}
+  .pick-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:9px 16px;margin-bottom:6px;color:var(--tx);font-weight:600;font-size:14px}
+  .pick-item .grp{margin-left:auto;font-size:10px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;font-weight:600;white-space:nowrap}
+  .pick-item .dot{width:6px;height:6px;border-radius:50%;background:var(--acc);flex:none;box-shadow:0 0 8px var(--acc)}
+  .dragh{touch-action:none;cursor:grab;background:none;border:0;color:var(--mut);font-size:20px;padding:0 6px 0 0;line-height:1}
+  .ex-blk.dragging{position:relative;z-index:5;box-shadow:0 14px 34px rgba(0,0,0,.6);border-color:var(--acc)}
   .link{background:none;border:0;color:var(--acc);font-weight:600;padding:0}
   .center{display:flex;flex-direction:column;align-items:center;text-align:center}
   .loading{padding:60px 20px;text-align:center;color:var(--mut)}
@@ -1640,11 +1645,38 @@ function coachBlock(d, it, idx){
   const trab = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, sel('sr','Séries',4,'—'), sel('rmin','Reps de',20,'—'), sel('rmax','até',20,'—'));
   const prep = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, num('aq','Aquecimento'), num('ap','Aproximação (feeder)'));
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
-  return el('div',{class:'card pad', style:'margin-top:10px'},
-    el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
+  const card = el('div',{class:'card pad ex-blk', style:'margin-top:10px'},
+    el('div',{class:'row', style:'align-items:center'}, dragHandle(d, idx, () => card), el('b',{text: it.nome || exNome(it.ex), style:'flex:1;min-width:0'}),
       el('button',{class:'link', style:'margin-left:auto;font-size:13px', text:'trocar', onclick:() => { S.retY = window.scrollY; S.swapIdx = idx; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}),
       el('button',{class:'link', style:'margin-left:14px;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
     uniBtn, trab, prep, desc, pr);
+  return card;
+}
+// arrastar para reordenar: segure a alça e puxe para cima ou para baixo
+function dragHandle(d, idx, getCard){
+  const hd = el('button',{class:'dragh', 'aria-label':'Arrastar para reordenar', text:'⠿'});
+  hd.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const card = getCard(); if (!card) return;
+    hd.setPointerCapture(e.pointerId);
+    const startY = e.clientY, step = card.offsetHeight + 10;
+    let target = idx;
+    card.classList.add('dragging');
+    const move = ev => {
+      const dy = ev.clientY - startY;
+      card.style.transform = 'translateY('+dy+'px)';
+      target = Math.max(0, Math.min(d.itens.length - 1, idx + Math.round(dy / step)));
+    };
+    const up = () => {
+      hd.removeEventListener('pointermove', move); hd.removeEventListener('pointerup', up); hd.removeEventListener('pointercancel', up);
+      card.classList.remove('dragging'); card.style.transform = '';
+      if (target !== idx){ const x = d.itens.splice(idx, 1)[0]; d.itens.splice(target, 0, x); saveDraft(); render(); }
+    };
+    hd.addEventListener('pointermove', move);
+    hd.addEventListener('pointerup', up);
+    hd.addEventListener('pointercancel', up);
+  });
+  return hd;
 }
 function coachView(){
   const d = S.draft;
@@ -2086,8 +2118,8 @@ function pickerView(){
     const curG = S.pickG || 'Todos';
     const arr = exAll().filter(e => (curG === 'Todos' || e[2] === curG) && (!termo || e[1].toLowerCase().includes(termo)));
     res.replaceChildren(
-      ...arr.slice(0, 100).map(e => el('button',{class:'card pad', style:'display:block;width:100%;text-align:left;margin-bottom:8px;cursor:pointer', onclick:() => addEx(e[0])},
-        el('div',{text:e[1]}), el('div',{class:'mut', style:'font-size:12px', text:e[2]}))),
+      ...arr.slice(0, 100).map(e => el('button',{class:'pick-item', onclick:() => addEx(e[0])},
+        el('span',{class:'dot'}), el('span',{text:e[1], style:'flex:1;min-width:0'}), el('span',{class:'grp', text:e[2]}))),
       (S.isOwner && termo && !arr.some(e => e[1].toLowerCase() === termo)) ? el('button',{class:'btn ghost', style:'width:100%', text:'Cadastrar "'+q+'"', onclick: async () => {
         const id = 'x-'+newId();
         const grupo = curG === 'Todos' ? 'Outro' : curG;
