@@ -1572,6 +1572,20 @@ function mergeItens(base, extra){
   for (const i of treinoItens(extra)) if (!out.some(o => o.ex === i.ex)) out.push(i);
   return out;
 }
+const SPLITS = {
+  'Push':   ['supino-inclinado-halter','supino-articulado-maquina','crucifixo-maquina','desenvolvimento-halter','elevacao-lateral-cabo','y-raise-cabo','triceps-corda','triceps-frances-halter'],
+  'Pull':   ['puxada-frente','remada-hammer-neutra','remada-unilateral','pulldown-corda','crucifixo-inverso-cruzado','kelso-shrug','rosca-scott','rosca-martelo'],
+  'Legs':   ['agachamento-hack','leg-press-45','cadeira-extensora','mesa-flexora','stiff-halter','cadeira-abdutora','panturrilha-em-pe','panturrilha-sentado'],
+  'Upper':  ['supino-inclinado-halter','puxada-frente','desenvolvimento-halter','remada-hammer-neutra','elevacao-lateral-cabo','crucifixo-inverso-cruzado','triceps-corda','rosca-direta-halter'],
+  'Lower':  ['agachamento-hack','leg-press-45','stiff-halter','cadeira-extensora','mesa-flexora','cadeira-abdutora','panturrilha-em-pe','abdominal-maquina'],
+  'Glutes': ['hip-thrust','stiff-halter','avanco-bulgaro','agachamento-sumo-maquina','elevacao-pelvica','gluteo-polia','cadeira-abdutora','mesa-flexora'],
+  'Quads':  ['agachamento-hack','leg-press-45','agachamento-smith','avanco-bulgaro','cadeira-extensora','leg-press-horizontal','afundo-halter','panturrilha-em-pe']
+};
+function applySplit(d, nome){
+  d.nome = nome;
+  d.itens = SPLITS[nome].map(ex => ({ex, nome:exNome(ex), prescr:'', aq:0, ap:0, desc:'', sr:0, rmin:0, rmax:0, uni:false}));
+  render();
+}
 function openCoach(id, cur){
   S.coachFor = id || null;
   S.draftKind = 'coach';
@@ -1589,7 +1603,8 @@ function coachBlock(d, it, idx){
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
-      el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
+      el('button',{class:'link', style:'margin-left:auto;font-size:13px', text:'trocar', onclick:() => { S.swapIdx = idx; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}),
+      el('button',{class:'link', style:'margin-left:14px;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
     uniBtn, trab, prep, desc, pr);
 }
 function coachView(){
@@ -1602,6 +1617,11 @@ function coachView(){
     el('h2',{text: id ? 'Treino de '+nick(id) : (d.lib ? 'Editar treino' : 'Novo treino'), style:'margin:0'})));
   wrap.append(el('label',{text:'Nome do treino'}), el('input',{placeholder:'Ex.: Treino A — peito e tríceps', value: d.nome || '', style:'width:100%', oninput: e => { d.nome = e.target.value; }}));
   wrap.append(el('label',{text:'Pasta (para organizar a biblioteca)'}), el('input',{placeholder:'Ex.: Hipertrofia, Hyrox, Iniciante', value: d.pasta || '', style:'width:100%', oninput: e => { d.pasta = e.target.value; }}));
+  wrap.append(el('label',{text:'Divisão (já traz 8 exercícios sugeridos)'}));
+  wrap.append(el('div',{class:'chips'}, ...Object.keys(SPLITS).map(k => el('button',{class:'chip'+(d.nome === k ? ' on' : ''), text:k, onclick:() => {
+    if (d.itens.length) confirmSheet('Trocar pelos 8 exercícios de '+k+'?', 'Os exercícios atuais deste treino serão substituídos.', () => applySplit(d, k), 'Trocar');
+    else applySplit(d, k);
+  }}))));
   wrap.append(el('div',{class:'chips', style:'margin-top:12px'}, el('button',{class:'chip', text:'📚 Carregar da biblioteca', onclick:() => { S.libMode = 'load'; go('biblio'); }})));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios. No caderno do aluno eles já aparecem escolhidos.'}));
   d.itens.forEach((it, idx) => wrap.append(coachBlock(d, it, idx)));
@@ -1696,7 +1716,7 @@ const EX_SEED = [
  ['kelso-shrug','Kelso shrug (banco inclinado ou máquina)','Costas'],
  ['y-raise-cabo','Y-raise no cabo (banco inclinado)','Ombros'],['lateral-cabo-costas','Elevação lateral no cabo (por trás das costas)','Ombros'],
  ['lateral-cabo-deitado','Elevação lateral deitado no cabo','Ombros'],['crucifixo-inverso-cruzado','Crucifixo inverso cruzado no cabo (pegada neutra)','Ombros'],
- ['cuban-press','Cuban press','Ombros'],['kenan-flaps','Kenan Flaps','Ombros'],['mergulho-banco','Mergulho no banco (bench dips)','Ombros'],
+ ['cuban-press','Cuban press','Ombros'],['kenan-flaps','Kenan Flaps','Ombros'],
  ['agachamento-sumo-maquina','Agachamento sumô (máquina)','Pernas'],
  ['pulldown-maquina','Pulldown (máquina)','Costas'],['remada-dy-row','Remada DY Row (máquina)','Costas'],['remada-hammer-neutra','Remada Hammer (pegada neutra)','Costas'],
  ['barra-fixa','Barra fixa','Costas'],['levantamento-terra','Levantamento terra','Costas'],
@@ -2001,7 +2021,11 @@ function progressView(){
 
 function addEx(id){
   const d = S.draft; if (!d) return;
-  if (S.draftKind === 'coach'){ d.itens.push({ex:id, nome:exNome(id), prescr:'', aq:0, ap:0}); S.pickQ = ''; S.pickG = 'Todos'; go('coach'); return; }
+  if (S.draftKind === 'coach'){
+    if (S.swapIdx != null && d.itens[S.swapIdx]){ d.itens[S.swapIdx] = {...d.itens[S.swapIdx], ex:id, nome:exNome(id)}; S.swapIdx = null; }
+    else d.itens.push({ex:id, nome:exNome(id), prescr:'', aq:0, ap:0, desc:'', sr:0, rmin:0, rmax:0, uni:false});
+    S.pickQ = ''; S.pickG = 'Todos'; go('coach'); return;
+  }
   const last = lastOf(id);
   d.itens.push({ex:id, sets: last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}]});
   S.pickQ = ''; S.pickG = 'Todos';
@@ -2029,8 +2053,8 @@ function pickerView(){
   };
   const grupos = ['Todos', ...new Set(exAll().map(e => e[2]))];
   wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
-    el('button',{class:'link', text:'← Voltar', onclick:() => go(S.draftKind === 'coach' ? 'coach' : 'logsess')}),
-    el('h2',{text:'Adicionar exercício', style:'margin:0'})));
+    el('button',{class:'link', text:'← Voltar', onclick:() => { S.swapIdx = null; go(S.draftKind === 'coach' ? 'coach' : 'logsess'); }}),
+    el('h2',{text: S.swapIdx != null ? 'Trocar exercício' : 'Adicionar exercício', style:'margin:0'})));
   wrap.append(el('input',{type:'search', placeholder:'Buscar (ex.: supino inclinado)', value: S.pickQ || '', style:'width:100%;margin-top:12px', oninput: e => { S.pickQ = e.target.value; drawRes(); }}));
   wrap.append(el('div',{class:'chips', style:'margin-top:10px'}, ...grupos.map(g => el('button',{class:'chip'+((S.pickG||'Todos')===g?' on':''), text:g, onclick:() => { S.pickG = g; render(); }}))));
   wrap.append(res);
