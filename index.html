@@ -365,6 +365,8 @@ const ACTS = [['Musculação','🏋️'],['Corrida','🏃'],['Funcional','🔥']
 const actIcon = a => (ACTS.find(x => x[0] === a) || ['','💪'])[1];
 const actsOf = k => (k.as && k.as.length) ? k.as : (k.a ? [k.a] : ['Treino']);
 const hm = ts => new Date(ts).toTimeString().slice(0,5);
+const byNome = (a,b) => (a.nome||'').localeCompare(b.nome||'', 'pt-BR', {numeric:true});
+const proximoNomeTreino = () => { const n = (S.fichaTreinos||[]).length; return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[n] || 'Treino '+(n+1); };
 const actLabel = k => actsOf(k).map(a => actIcon(a)+' '+a).join(' + ') + (k.min ? ' · '+k.min+' min' : '') + (k.km ? ' · '+k.km+' km' : '') + (k.ch ? ' · 🏆' : '');
 const ICON = {
   share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
@@ -459,7 +461,8 @@ async function boot(){
     }, onErr);
   } else {
     db.collection('treinos/'+S.me).onSnapshot(snap => {
-      S.assigned = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0))[0] || null;
+      S.assignedList = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byNome);
+      S.assigned = S.assignedList[0] || null;
       schedule();
     }, onErr);
   }
@@ -801,7 +804,7 @@ function openCheckin(){
   drawD();
   let tipo = '';
   const tipoIn = el('input',{type:'text', maxlength:30, placeholder:'Ex.: Upper, Push, Perna…', style:'width:100%', oninput: e => { tipo = e.target.value; }});
-  const tipoChips = el('div',{class:'chips'}, ...['Push','Pull','Legs','Upper','Lower','Glutes','Quads'].map(n => el('button',{class:'chip', text:n, onclick:() => { tipo = n; tipoIn.value = n; }})));
+  const tipoChips = el('div',{class:'chips'}, ...(S.assignedList && S.assignedList.length ? S.assignedList.map(t => t.nome) : ['Push','Pull','Legs','Upper','Lower','Glutes','Quads']).map(n => el('button',{class:'chip', text:n, onclick:() => { tipo = n; tipoIn.value = n; }})));
   const min = el('input',{type:'number', inputmode:'numeric', min:1, max:600, placeholder:'Ex.: 60'});
   const km = el('input',{type:'number', inputmode:'decimal', min:0, max:999, step:'0.01', placeholder:'Ex.: 5,2'});
   const cap = el('textarea',{rows:3, maxlength:400, placeholder:'Como foi o treino? (opcional)'});
@@ -1103,12 +1106,15 @@ function areaView(uid, f, avs){
   if (isMe){
     wrap.append(el('h2',{text:'Meu plano'}));
     // treino montado pelo Léo aparece direto aqui; sem treino, mantém o botão do logbook
-    if (S.assigned && (S.assigned.itens || []).length){
-      const n = (S.assigned.itens || []).length;
-      wrap.append(el('div',{class:'card pad', style:'margin:0 0 14px;cursor:pointer', onclick:() => beginLog(null)},
-        el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
-        el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:n+(n===1?' exercício':' exercícios')}),
-        el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
+    const lista = (S.assignedList || []).filter(t => (t.itens || []).length);
+    if (lista.length){
+      for (const t of lista){
+        const n = t.itens.length;
+        wrap.append(el('div',{class:'card pad', style:'margin:0 0 12px;cursor:pointer', onclick:() => beginLog(t)},
+          el('div',{class:'nm', text:'📋 '+(t.nome || 'Treino')}),
+          el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:n+(n===1?' exercício':' exercícios')}),
+          el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
+      }
       wrap.append(el('button',{class:'link', style:'display:block;margin:0 0 14px;color:var(--mut);font-size:13px', text:'📓 Ver histórico (séries e cargas)', onclick:() => go('logbook')}));
     } else wrap.append(el('button',{class:'btn', style:'margin:0 0 14px', text:'📓 Meu logbook (séries e cargas)', onclick:() => go('logbook')}));
   }
@@ -1222,14 +1228,15 @@ function fichaView(){
     el('label',{text:'Frequência / detalhes'}), freq,
     el('div',{class:'row', style:'gap:10px'}, el('div',{style:'flex:1'}, el('label',{text:'Início'}), ini), el('div',{style:'flex:1'}, el('label',{text:'Vencimento'}), fim)),
     el('div',{class:'mut', style:'margin-top:6px', text:'O vencimento é calculado sozinho: personal 4 semanas, consultoria 6 semanas. Dá para ajustar.'})));
-  // treino montado (caderno do aluno)
-  const cur = (S.fichaTreinos || [])[0];
-  wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treino no caderno do aluno'}),
-    cur ? el('div',{}, el('div',{class:'mut', style:'margin-top:6px', text: cur.nome+' · enviado '+fmtDate(dstr(new Date(cur.ts)))}),
-      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))))
+  // treinos montados (caderno do aluno), em ordem A, B, C...
+  const trs = [...(S.fichaTreinos || [])].sort(byNome);
+  wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treinos no caderno do aluno'}),
+    trs.length ? el('div',{}, ...trs.map(t => el('div',{class:'row', style:'margin-top:10px;align-items:center'},
+        el('div',{style:'flex:1'}, el('div',{class:'nm', text:t.nome || 'Treino'}), el('div',{class:'mut', style:'font-size:12px', text:(t.itens||[]).length+' exercícios · enviado '+fmtDate(dstr(new Date(t.ts)))})),
+        el('button',{class:'btn ghost sm', text:'Editar', onclick:() => openCoach(id, t)}))))
       : el('div',{class:'mut', style:'margin-top:6px', text:'Nenhum treino enviado ainda.'}),
     el('div',{class:'row', style:'gap:8px;margin-top:12px'},
-      el('button',{class:'btn sm', style:'flex:1', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)}),
+      el('button',{class:'btn sm', style:'flex:1', text:'＋ Novo treino', onclick:() => openCoach(id, null)}),
       el('button',{class:'btn ghost sm', style:'flex:1', text:'📈 Logbook e progresso', onclick:() => { S.progFor = id; go('progresso'); }}))));
   // avaliações
   const avs = S.fichaAvs;
@@ -1617,7 +1624,7 @@ function applySplit(d, nome){
 function openCoach(id, cur){
   S.coachFor = id || null;
   S.draftKind = 'coach';
-  S.draft = {kind:'coach', id:newId(), nome:cur?.nome || '', pasta:'', itens:treinoItens(cur?.itens)};
+  S.draft = {kind:'coach', id:newId(), docId:cur?.id || null, nome:cur?.nome || proximoNomeTreino(), pasta:'', itens:treinoItens(cur?.itens)};
   go('coach');
 }
 function coachBlock(d, it, idx){
@@ -1659,16 +1666,15 @@ function coachView(){
     const ok = await w(() => S.db.doc('biblioteca/'+d.id).set(data), 'Salvo na biblioteca ✓');
     if (ok && !id){ S.draft = null; go('biblio'); }
   }}));
-  if (id) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Enviar para o aluno', disabled: !d.itens.length, onclick: () => confirmSheet('Enviar este treino para '+nick(id)+'?', 'O treino anterior dele some e ele passa a ver só este.', () => sendTreino(id, d), 'Enviar')}));
+  if (id) wrap.append(el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'Enviar para o aluno', disabled: !d.itens.length, onclick: () => confirmSheet('Enviar este treino para '+nick(id)+'?', 'Ele vai ver este treino no caderno dele.', () => sendTreino(id, d), 'Enviar')}));
   return wrap;
 }
 async function sendTreino(uid, d){
   const itens = treinoItens(d.itens);
   if (!itens.length) return toast('Adicione pelo menos um exercício');
   const ok = await w(async () => {
-    const snap = await S.db.collection('treinos/'+uid).get();
-    await Promise.all(snap.docs.map(x => S.db.doc('treinos/'+uid+'/'+x.id).delete()));
-    await S.db.doc('treinos/'+uid+'/'+newId()).set({nome:(d.nome || '').trim() || 'Treino', ts:Date.now(), itens});
+    const ref = S.db.doc('treinos/'+uid+'/'+(d.docId || newId()));
+    await ref.set({nome:(d.nome || '').trim() || 'Treino', ts:Date.now(), itens});
   }, 'Treino enviado ✓');
   if (ok){ S.draft = null; openFicha(uid); }
 }
@@ -1814,10 +1820,10 @@ function logbookView(){
   if (pend && (pend.itens || []).length) wrap.append(el('button',{class:'btn', style:'margin:14px 0 0', text:'▶ Continuar treino em andamento', onclick:() => { S.draft = pend; S.draftKind = 'log'; go('logsess'); }}));
   if (S.isOwner){
     wrap.append(el('button',{class:'btn ghost', style:'margin:14px 0', text:'＋ Registrar treino', onclick:() => { S.draftKind = 'log'; S.draft = {id:newId(), date:today(), itens:[]}; saveDraft(); go('logsess'); { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } }}));
-  } else if (S.assigned){
-    wrap.append(el('div',{class:'card pad', style:'margin:14px 0;cursor:pointer', onclick:() => beginLog(null)},
-      el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
-      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
+  } else if ((S.assignedList || []).length){
+    for (const t of S.assignedList) wrap.append(el('div',{class:'card pad', style:'margin:14px 0 10px;cursor:pointer', onclick:() => beginLog(t)},
+      el('div',{class:'nm', text:'📋 '+(t.nome || 'Treino')}),
+      ...treinoItens(t.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome+uniTag(i)}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
       el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
   } else {
     wrap.append(el('div',{class:'empty', style:'margin:14px 0'}, el('div',{class:'big',text:'📋'}), 'O Léo ainda não montou um treino para você.'));
