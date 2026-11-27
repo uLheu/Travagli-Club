@@ -20,7 +20,7 @@ begin
     when 'comments'   then d->>'u' = auth.uid()::text
     when 'groups'     then true
     when 'sessoes'    then split_part(p, '/', 2) = auth.uid()::text  -- só o próprio logbook
-    when 'exercicios' then true                                      -- qualquer aluno cadastra
+    when 'exercicios' then false                                     -- só o dono cadastra (aluno não)
     else false                                                       -- challenges, fichas, config: só o dono
   end;
 end $$;

@@ -1608,7 +1608,7 @@ function pickerView(){
     res.replaceChildren(
       ...arr.slice(0, 100).map(e => el('button',{class:'card pad', style:'display:block;width:100%;text-align:left;margin-bottom:8px;cursor:pointer', onclick:() => addEx(e[0])},
         el('div',{text:e[1]}), el('div',{class:'mut', style:'font-size:12px', text:e[2]}))),
-      (termo && !arr.some(e => e[1].toLowerCase() === termo)) ? el('button',{class:'btn ghost', style:'width:100%', text:'Cadastrar "'+q+'"', onclick: async () => {
+      (S.isOwner && termo && !arr.some(e => e[1].toLowerCase() === termo)) ? el('button',{class:'btn ghost', style:'width:100%', text:'Cadastrar "'+q+'"', onclick: async () => {
         const id = 'x-'+newId();
         const grupo = curG === 'Todos' ? 'Outro' : curG;
         const ok = await w(() => S.db.doc('exercicios/'+id).set({nome:q.slice(0,80), grupo}), 'Exercício cadastrado ✓');
