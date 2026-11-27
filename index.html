@@ -1911,7 +1911,7 @@ function exMenu(d, idx){
     idx > 0 ? b('↑ Mover para cima', () => mv(-1)) : null,
     idx < d.itens.length - 1 ? b('↓ Mover para baixo', () => mv(1)) : null,
     S.isOwner ? b(it.uni ? 'Tirar unilateral' : 'Marcar como unilateral', () => { it.uni = !it.uni; saveDraft(); render(); }) : null,
-    b('＋ Adicionar série', () => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }),
+    S.isOwner ? b('＋ Adicionar série', () => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }) : null,
     S.isOwner ? b('Remover do treino', () => { d.itens.splice(idx, 1); saveDraft(); render(); }, 'danger') : null));
 }
 function exHistory(exId, list){
@@ -1970,7 +1970,7 @@ function exBlock(d, it, idx){
       el('input',{type:'number', inputmode:'numeric', placeholder: s.phR ? String(s.phR) : 'reps', value: s.r ?? '', oninput: e => { s.r = e.target.value; saveDraft(); }}),
       el('input',{type:'number', inputmode:'decimal', step:'any', placeholder: s.phKg ? s.phKg+' kg' : 'kg', value: s.kg ?? '', oninput: e => { s.kg = e.target.value; saveDraft(); }}),
       el('button',{class:'scheck'+(s.done ? ' on' : ''), text:'✓', 'aria-label':'Série feita', onclick:() => toggleDone(it, s)}),
-      el('button',{class:'link', style:'color:var(--mut)', text:'✕', 'aria-label':'Apagar série', onclick:() => { it.sets.splice(si, 1); if (!it.sets.some(x => !isWarm(x.t))) it.sets.push({r:'', kg:''}); saveDraft(); render(); }}));
+      (S.isOwner ? el('button',{class:'link', style:'color:var(--mut)', text:'✕', 'aria-label':'Apagar série', onclick:() => { it.sets.splice(si, 1); if (!it.sets.some(x => !isWarm(x.t))) it.sets.push({r:'', kg:''}); saveDraft(); render(); }}) : null));
   });
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row', style:'align-items:center'}, el('b',{text:exNome(it.ex)+uniTag(it), style:'flex:1'}),
@@ -1978,7 +1978,7 @@ function exBlock(d, it, idx){
     (it.prescr || it.aq || it.ap || it.desc) ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+prescrTxt(it)}) : null,
     el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
     ...rows,
-    el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }}));
+    (S.isOwner ? el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }}) : null));
 }
 
 // ---------- progresso ----------
