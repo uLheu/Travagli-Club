@@ -257,7 +257,7 @@ function showLogin(){
     const msg = box.querySelector('#lgMsg');
     if (!email) return;
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
-    msg.textContent = error ? 'Este e-mail ainda não foi convidado. Peça ao Léo para te convidar.' : 'Pronto! Confira seu e-mail e toque no link.';
+    msg.textContent = error ? 'Erro: ' + (error.message || error.code || error.status || 'desconhecido') : 'Pronto! Confira seu e-mail e toque no link.';
   };
 }
 
