@@ -1100,7 +1100,17 @@ function areaView(uid, f, avs){
   const wrap = el('div');
   if (f == null || avs == null){ wrap.append(el('div',{class:'loading', text:'Carregando seu plano…'})); return wrap; }
   const isMe = uid === S.me;
-  if (isMe) wrap.append(el('h2',{text:'Meu plano'}), el('button',{class:'btn', style:'margin:0 0 14px', text:'📓 Meu logbook (séries e cargas)', onclick:() => go('logbook')}));
+  if (isMe){
+    wrap.append(el('h2',{text:'Meu plano'}));
+    // treino montado pelo Léo aparece direto aqui; sem treino, mantém o botão do logbook
+    if (S.assigned && (S.assigned.itens || []).length){
+      const n = (S.assigned.itens || []).length;
+      wrap.append(el('div',{class:'card pad', style:'margin:0 0 14px;cursor:pointer', onclick:() => beginLog(null)},
+        el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
+        el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:n+(n===1?' exercício':' exercícios')}),
+        el('div',{class:'btn', style:'width:100%;margin-top:12px;text-align:center', text:'▶ Registrar treino de hoje'})));
+    } else wrap.append(el('button',{class:'btn', style:'margin:0 0 14px', text:'📓 Meu logbook (séries e cargas)', onclick:() => go('logbook')}));
+  }
   const pi = planInfo(f);
   // plano
   if (f.tipo || pi){
