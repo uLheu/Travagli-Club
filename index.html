@@ -1185,7 +1185,7 @@ function fichaView(){
   const cur = (S.fichaTreinos || [])[0];
   wrap.append(el('div',{class:'card pad'}, el('div',{class:'nm', text:'🏋️ Treino no caderno do aluno'}),
     cur ? el('div',{}, el('div',{class:'mut', style:'margin-top:6px', text: cur.nome+' · enviado '+fmtDate(dstr(new Date(cur.ts)))}),
-      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:[prepTxt(i), i.prescr].filter(Boolean).join(' · ') || 'Sem prescrição'}))))
+      ...treinoItens(cur.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))))
       : el('div',{class:'mut', style:'margin-top:6px', text:'Nenhum treino enviado ainda.'}),
     el('div',{class:'row', style:'gap:8px;margin-top:12px'},
       el('button',{class:'btn sm', style:'flex:1', text: cur ? 'Editar e reenviar' : 'Montar treino', onclick:() => openCoach(id, cur)}),
@@ -1529,10 +1529,11 @@ go = function(tab, extra){ if (tab === 'user' && S.tab !== 'user') S.prevTab = S
 
 
 // ---------- treinos montados pelo coach e biblioteca ----------
-function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0})); }
+function treinoItens(itens){ return (itens || []).map(i => ({ex:i.ex, nome:i.nome || exNome(i.ex), prescr:i.prescr || '', aq:+i.aq || 0, ap:+i.ap || 0, desc:i.desc || ''})); }
 const roundLoad = x => x >= 20 ? Math.round(x/2.5)*2.5 : Math.max(1, Math.round(x));
 const isWarm = t => t === 'A' || t === 'P';
 const prepTxt = i => [i.aq ? i.aq+' aquec.' : '', i.ap ? i.ap+' aprox.' : ''].filter(Boolean).join(' + ');
+const prescrTxt = i => [prepTxt(i), i.prescr, i.desc ? 'descanso '+i.desc : ''].filter(Boolean).join(' · ');
 function prepSets(aq, ap, base){
   const out = [];
   for (let k = 0; k < aq; k++){ const pct = Math.min(0.6, 0.4 + 0.1*k); out.push({t:'A', r:'', kg:'', phR:10, phKg: base ? roundLoad(base*pct) : ''}); }
@@ -1556,10 +1557,11 @@ function coachBlock(d, it, idx){
   const num = (k, lbl) => el('div',{style:'flex:1'}, el('label',{text:lbl, style:'font-size:12px'}),
     el('select',{style:'width:100%', onchange: e => { it[k] = +e.target.value; }}, ...[0,1,2,3].map(n => el('option',{value:n, text: n ? String(n) : 'Nenhuma', selected: (+it[k] || 0) === n}))));
   const prep = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, num('aq','Aquecimento'), num('ap','Aproximação (feeder)'));
+  const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row'}, el('b',{text: it.nome || exNome(it.ex)}),
       el('button',{class:'link', style:'margin-left:auto;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
-    prep, pr);
+    prep, pr, desc);
 }
 function coachView(){
   const d = S.draft;
@@ -1598,9 +1600,11 @@ function startLogFromAssigned(){
   S.draftKind = 'log';
   S.draft = {id:newId(), date:today(), nome:at.nome || '', itens: treinoItens(at.itens).map(i => {
     const last = lastOf(i.ex);
-    const work = last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}];
+    let work = last ? last.sets.map(x => ({r:x.r ?? '', kg:x.kg ?? ''})) : [{r:'',kg:''}];
+    const m = String(i.prescr || '').match(/^\s*(\d+)\s*[x×]/i), n = m ? Math.min(10, +m[1]) : 0;
+    if (n){ const ref = work[work.length-1]; work = [...Array(n)].map((_, k) => ({...(work[k] || ref)})); }
     const base = last ? Math.max(0, ...last.sets.map(x => +x.kg || 0)) : 0;
-    return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, sets:[...prepSets(i.aq, i.ap, base), ...work]};
+    return {ex:i.ex, nome:i.nome, prescr:i.prescr, aq:i.aq, ap:i.ap, desc:i.desc, sets:[...prepSets(i.aq, i.ap, base), ...work]};
   })};
   saveDraft(); go('logsess');
 }
@@ -1721,7 +1725,7 @@ function logbookView(){
   } else if (S.assigned){
     wrap.append(el('div',{class:'card pad', style:'margin:14px 0'},
       el('div',{class:'nm', text:'📋 '+(S.assigned.nome || 'Treino')}),
-      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:[prepTxt(i), i.prescr].filter(Boolean).join(' · ') || 'Sem prescrição'}))),
+      ...treinoItens(S.assigned.itens).map(i => el('div',{style:'margin-top:8px'}, el('div',{text:i.nome}), el('div',{class:'mut', style:'font-size:13px', text:prescrTxt(i) || 'Sem prescrição'}))),
       el('button',{class:'btn', style:'width:100%;margin-top:12px', text:'＋ Registrar treino de hoje', onclick:() => {
         if (pend && (pend.itens || []).length) return confirmSheet('Começar um treino novo?', 'Você tem um treino em andamento que ainda não foi salvo. Ele será descartado.', () => { clearDraft(); startLogFromAssigned(); }, 'Começar novo');
         startLogFromAssigned();
@@ -1751,23 +1755,6 @@ function saveDraft(){ try { if (S.draft && S.draftKind !== 'coach') localStorage
 function clearDraft(){ try { localStorage.removeItem('tc-draft-'+S.me); } catch(e){} }
 function loadDraft(){ try { const v = localStorage.getItem('tc-draft-'+S.me); return v ? JSON.parse(v) : null; } catch(e){ return null; } }
 
-// cronômetro de descanso
-function startRest(sec){ S.rest = {end: Date.now() + sec*1000}; tickRest(); if (!S.restInt) S.restInt = setInterval(tickRest, 300); }
-function stopRest(){ S.rest = null; tickRest(); }
-function adjRest(x){ if (!S.rest) return; S.rest.end += x*1000; S.restSec = Math.max(15, (S.restSec || 90) + x); tickRest(); }
-function tickRest(){
-  let bar = document.getElementById('restBar');
-  if (!S.rest){ if (bar) bar.remove(); if (S.restInt){ clearInterval(S.restInt); S.restInt = 0; } return; }
-  if (!bar){
-    bar = el('div',{id:'restBar', class:'restbar'}, el('span',{class:'rt'}),
-      el('button',{text:'−15', onclick:() => adjRest(-15)}), el('button',{text:'+15', onclick:() => adjRest(15)}), el('button',{text:'Pular', onclick:stopRest}));
-    document.body.append(bar);
-  }
-  const left = Math.max(0, Math.ceil((S.rest.end - Date.now())/1000));
-  bar.querySelector('.rt').textContent = '⏱ Descanso '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
-  if (!left){ try { navigator.vibrate && navigator.vibrate([200,100,200]); } catch(e){} toast('Descanso acabou 💪'); stopRest(); }
-}
-
 const SET_TYPES = ['', 'A', 'P', 'D', 'F'];
 const e1rm = (kg, r) => (kg > 0 && r > 0) ? kg * (1 + Math.min(r, 12)/30) : 0;
 const exGrupo = id => { const e = exAll().find(x => x[0] === id); return e ? e[2] : 'Outro'; };
@@ -1777,7 +1764,6 @@ function toggleDone(it, s){
     if ((s.kg === '' || s.kg == null) && s.phKg) s.kg = String(s.phKg);
     if (!s.r && !s.kg) return toast('Preencha reps ou carga');
     s.done = true;
-    startRest(isWarm(s.t) ? 60 : (S.restSec || 90));
   } else s.done = false;
   saveDraft(); render();
 }
@@ -1788,7 +1774,6 @@ function exMenu(d, idx){
   const mv = k => { const x = d.itens.splice(idx, 1)[0]; d.itens.splice(idx + k, 0, x); saveDraft(); render(); };
   sheet(exNome(it.ex), el('div',{},
     b('📈 Histórico do exercício', () => exHistory(it.ex, S.sessoes)),
-    b('📝 Nota fixa', () => editNota(it.ex)),
     idx > 0 ? b('↑ Mover para cima', () => mv(-1)) : null,
     idx < d.itens.length - 1 ? b('↓ Mover para baixo', () => mv(1)) : null,
     b('＋ Adicionar série', () => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }),
@@ -1809,17 +1794,6 @@ function exHistory(exId, list){
     ...(rows.length ? rows.slice(0, 30).map(r => el('div',{class:'pick'}, el('div',{}, el('div',{class:'nm', text:fmtDate(r.date)}), el('div',{class:'mut', style:'font-size:13px', text:fmtSets(r.sets)}))))
       : [el('div',{class:'mut', style:'padding:6px 0 10px', text:'Ainda não tem registro deste exercício.'})])));
 }
-function editNota(exId){
-  const ta = el('textarea',{rows:3, placeholder:'Ex.: banco na posição 4, pegada fechada'});
-  ta.value = ((S.members.get(S.me) || {}).notas || {})[exId] || '';
-  sheet('Nota fixa', el('div',{},
-    el('div',{class:'mut', style:'margin-bottom:8px', text:exNome(exId)+' · aparece sempre que este exercício estiver no treino.'}), ta,
-    el('button',{class:'btn', style:'margin-top:12px', text:'Salvar nota', onclick: async () => {
-      const cur = S.members.get(S.me) || {}; const notas = {...(cur.notas || {})}; const v = ta.value.trim();
-      if (v) notas[exId] = v.slice(0, 300); else delete notas[exId];
-      if (await w(() => S.db.doc('members/'+S.me).set({...cur, notas}), 'Nota salva')){ closeSheet(); render(); }
-    }})));
-}
 
 function sessionView(){
   if (!S.draft){ go('logbook'); return el('div'); }
@@ -1833,7 +1807,7 @@ function sessionView(){
   wrap.append(el('div',{class:'row', style:'gap:10px;align-items:end'},
     el('div',{style:'flex:1'}, el('label',{text:'Data do treino'}), el('input',{type:'date', value:d.date, onchange: e => { d.date = e.target.value || today(); saveDraft(); }})),
     el('div',{class:'mut', style:'padding-bottom:12px;font-size:13px', text: feitas+' de '+tot+' séries feitas'})));
-  wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série para iniciar o descanso.'}));
+  wrap.append(el('div',{class:'mut', style:'font-size:12px;margin-top:8px;line-height:1.45', text:'Toque no número da série para mudar o tipo: A aquecimento, P aproximação, D drop-set, F até a falha. Marque ✓ ao terminar cada série.'}));
   if (!d.itens.length) wrap.append(el('div',{class:'mut', style:'padding:14px 0', text:'Adicione os exercícios do treino.'}));
   d.itens.forEach((it, idx) => wrap.append(exBlock(d, it, idx)));
   if (S.isOwner) wrap.append(el('button',{class:'btn ghost', style:'width:100%;margin-top:12px', text:'＋ Adicionar exercício', onclick:() => go('logpick')}));
@@ -1844,15 +1818,14 @@ function sessionView(){
     if (!itens.length){ toast('Preencha pelo menos uma série'); return; }
     const data = {date:d.date, ts:Date.now(), itens, nome: d.nome || null};
     const saved = await w(() => S.db.doc('sessoes/'+S.me+'/'+d.id).set(data), 'Treino salvo ✓');
-    if (saved){ S.draft = null; clearDraft(); stopRest(); go('logbook'); }
+    if (saved){ S.draft = null; clearDraft(); go('logbook'); }
   }}));
-  wrap.append(el('button',{class:'link', style:'display:block;margin:16px auto 90px;color:var(--mut)', text:'Descartar este treino', onclick:() => confirmSheet('Descartar o treino?', 'O que você anotou hoje e ainda não salvou será perdido.', () => { S.draft = null; clearDraft(); stopRest(); go('logbook'); }, 'Descartar')}));
+  wrap.append(el('button',{class:'link', style:'display:block;margin:16px auto 90px;color:var(--mut)', text:'Descartar este treino', onclick:() => confirmSheet('Descartar o treino?', 'O que você anotou hoje e ainda não salvou será perdido.', () => { S.draft = null; clearDraft(); go('logbook'); }, 'Descartar')}));
   return wrap;
 }
 
 function exBlock(d, it, idx){
   const last = lastOf(it.ex);
-  const nota = ((S.members.get(S.me) || {}).notas || {})[it.ex];
   let n = 0;
   const rows = it.sets.map((s, si) => {
     if (!isWarm(s.t)) n++;
@@ -1867,8 +1840,7 @@ function exBlock(d, it, idx){
   return el('div',{class:'card pad', style:'margin-top:10px'},
     el('div',{class:'row', style:'align-items:center'}, el('b',{text:exNome(it.ex), style:'flex:1'}),
       el('button',{class:'link', style:'font-size:22px;line-height:1;padding:0 6px;color:var(--tx)', text:'…', 'aria-label':'Opções do exercício', onclick:() => exMenu(d, idx)})),
-    (it.prescr || it.aq || it.ap) ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+[prepTxt(it), it.prescr].filter(Boolean).join(' · ')}) : null,
-    nota ? el('div',{class:'exnote', text:'📝 '+nota}) : null,
+    (it.prescr || it.aq || it.ap || it.desc) ? el('div',{class:'mut', style:'font-size:13px;margin-top:4px', text:'Prescrito: '+prescrTxt(it)}) : null,
     el('div',{class:'mut', style:'font-size:12px;margin-top:4px', text: last ? 'Última vez ('+fmtDate(last.date).slice(0,5)+'): '+fmtSets(last.sets) : 'Primeira vez com este exercício'}),
     ...rows,
     el('button',{class:'btn ghost sm', style:'margin-top:10px', text:'+ série', onclick:() => { const ws = it.sets.filter(x => !isWarm(x.t)); const p = ws[ws.length-1] || {}; it.sets.push({r:p.r || '', kg:p.kg || ''}); saveDraft(); render(); }}));
