@@ -113,6 +113,8 @@
   .toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--tx);color:var(--ink);padding:11px 18px;border-radius:999px;font-weight:600;z-index:40;font-size:14px;max-width:90vw;text-align:center}
   .note{background:rgba(255,210,74,.1);border:1px solid rgba(255,210,74,.35);color:#ffe08a;border-radius:14px;padding:12px;font-size:13px;line-height:1.45;margin-bottom:14px}
   .ch-st{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.ch-tag{font-size:12px;font-weight:700;color:var(--gold);padding:9px 14px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.5px}
+.card.post.ch-post{border-color:var(--gold)}
   .st-on{color:var(--acc)} .st-up{color:var(--gold)} .st-end{color:var(--mut)}
   .pick{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
   .pick input{width:22px;height:22px;accent-color:var(--acc);flex:none}
@@ -601,8 +603,12 @@ function feedView(){
   if (mg.length) wrap.append(el('div',{class:'seg'},
     el('button',{class:'chip'+(!S.feedGroup?' on':''), text:'Todos', onclick:() => { S.feedGroup = null; render(); }}),
     ...mg.map(g => el('button',{class:'chip'+(S.feedGroup===g.id?' on':''), text:(g.emoji||'👥')+' '+g.name, onclick:() => { S.feedGroup = g.id; render(); }}))));
+  const kind = S.feedKind || 'all';
+  wrap.append(el('div',{class:'seg'}, ...[['all','Tudo'],['ch','🏆 Desafios'],['free','📸 Feed']].map(([v,l]) => el('button',{class:'chip'+(kind===v?' on':''), text:l, onclick:() => { S.feedKind = v; render(); }}))));
   let list = S.checkins;
   if (S.feedGroup){ const g = mg.find(x => x.id === S.feedGroup); const set = new Set(g.members||[]); list = list.filter(k => set.has(k.u)); }
+  if (kind === 'ch') list = list.filter(k => !!k.ch);
+  if (kind === 'free') list = list.filter(k => !k.ch);
   if (!list.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big',text:'🏋️'}), 'Nenhum treino no mural ainda.', el('br'), 'Registre o primeiro!')); return wrap; }
   for (const k of list.slice(0, 120)) wrap.append(postCard(k));
   return wrap;
@@ -625,6 +631,7 @@ function postCard(k){
       el('div',{class:'acts'}, likeBtn, cmBtn,
         k.u === S.me ? (() => { const b = el('button',{'aria-label':'Story para o Instagram', title:'Story', onclick:() => openStory(k)}); b.innerHTML = ICON.share; return b; })() : null,
         (k.u === S.me || S.isOwner) ? el('button',{style:'color:var(--mut);font-size:13px', text:'Apagar', onclick:() => delCheckin(k)}) : null)));
+  if (k.ch) { card.classList.add('ch-post'); card.prepend(el('div',{class:'ch-tag', text:'🏆 '+((S.challenges.find(c => c.id === k.ch) || {}).name || 'Desafio')})); }
   if (k.cap) card.append(el('div',{class:'cap', text:k.cap}));
   return card;
 }
