@@ -1428,7 +1428,11 @@ function userView(id){
   }
   if (isMe){
     wrap.append(el('div',{class:'row', style:'gap:8px;margin:6px 0 4px'},
-      el('button',{class:'btn ghost sm', style:'flex:1', text:'Editar perfil', onclick:editProfile})));
+      el('button',{class:'btn ghost sm', style:'flex:1', text:'Editar perfil', onclick:editProfile}),
+      el('button',{class:'btn ghost sm', style:'flex:1', text:'Sair da conta', onclick:() => confirmSheet('Sair da conta?', 'Você vai precisar pegar um novo código por e-mail para entrar de novo.', async () => {
+        await sb.auth.signOut();
+        location.reload();
+      })})));
   }
   wrap.append(el('div',{class:'nm', style:'margin:16px 2px 8px', text:'Treinos ('+all.length+')'}));
   if (!all.length) wrap.append(el('div',{class:'empty', style:'padding:20px', text: isMe ? 'Seus check-ins vão aparecer aqui.' : 'Nenhum check-in ainda.'}));
