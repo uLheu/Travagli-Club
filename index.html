@@ -826,7 +826,7 @@ function openCheckin(){
   const t = today();
   let date = t;
   const drop = el('div',{class:'drop', style:'aspect-ratio:1/1'});
-  const camIn = el('input',{type:'file', accept:'image/*', capture:'environment', style:'display:none', 'aria-label':'Tirar foto com a câmera'});
+  const camIn = el('input',{type:'file', accept:'image/*', style:'display:none', 'aria-label':'Tirar foto com a câmera'});
   const galIn = el('input',{type:'file', accept:'image/*', style:'display:none', 'aria-label':'Escolher da galeria'});
   const empty = () => { const ic = el('div'); ic.innerHTML = ICON.cam; drop.replaceChildren(ic, el('div',{class:'nm',text:'Foto do treino'}), el('div',{class:'mut',text:'Obrigatória · use os botões abaixo'})); };
   empty();
