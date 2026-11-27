@@ -441,6 +441,10 @@ async function boot(){
     S.sessoes = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0));
     schedule();
   }, onErr);
+  db.collection('acervo').onSnapshot(snap => {
+    S.acervo = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (b.ts||0) - (a.ts||0));
+    schedule();
+  }, onErr);
   db.collection('exercicios').onSnapshot(snap => {
     S.exCustom = snap.docs.map(d => ({id:d.id, ...d.data()}));
     schedule();
@@ -482,7 +486,7 @@ async function render(){
     main.replaceChildren(onboarding());
     return;
   }
-  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = ['ficha','coach','biblio','logbook','logsess','logpick','progresso'].includes(S.tab) ? 'none' : 'flex';
+  $('#nav').style.display = 'flex'; $('#plusBtn').style.display = ['ficha','coach','biblio','logbook','logsess','logpick','progresso','acervo'].includes(S.tab) ? 'none' : 'flex';
   $('#meBtn').replaceChildren(avatar(S.me));
   const ids = [...S.members.keys()];
   try { S.profiles = await S.user.profiles(ids); } catch(e){}
@@ -503,6 +507,7 @@ async function render(){
   else if (S.tab === 'coach') view = coachView();
   else if (S.tab === 'biblio') view = biblioView();
   else if (S.tab === 'progresso') view = progressView();
+  else if (S.tab === 'acervo') view = acervoView();
   else if (S.tab === 'user') view = userView(S.viewUser);
   const y = window.scrollY;
   main.replaceChildren(view);
@@ -1137,7 +1142,9 @@ function areaView(uid, f, avs){
 function alunosView(){
   const wrap = el('div');
   wrap.append(el('h2',{text:'Alunos'}), el('div',{class:'mut', style:'margin:-6px 2px 12px', text:'Só você vê esta aba. Toque num aluno para lançar plano, avaliação, treino e dieta.'}),
-    el('button',{class:'btn ghost sm', style:'margin-bottom:12px', text:'📚 Biblioteca de treinos', onclick:() => { S.libMode = null; S.draft = null; go('biblio'); }}));
+    el('div',{class:'row', style:'gap:8px;margin-bottom:12px'},
+      el('button',{class:'btn ghost sm', style:'flex:1', text:'📚 Biblioteca de treinos', onclick:() => { S.libMode = null; S.draft = null; go('biblio'); }}),
+      el('button',{class:'btn ghost sm', style:'flex:1', text:'🔬 Acervo de artigos', onclick:() => go('acervo')})));
   const ids = [...S.members.keys()].filter(id => id !== S.me);
   if (!ids.length){ wrap.append(el('div',{class:'empty'}, el('div',{class:'big', text:'👥'}), 'Quando seus alunos entrarem no app, eles aparecem aqui.')); return wrap; }
   const order = id => { const pi = planInfo(S.fichas.get(id)); return pi ? pi.left : 99999; };
@@ -1686,6 +1693,10 @@ const EX_SEED = [
  ['remada-curvada-barra','Remada curvada (barra)','Costas'],['remada-curvada-halter','Remada curvada (halter)','Costas'],
  ['remada-unilateral','Remada unilateral (serrote)','Costas'],['remada-maquina','Remada na máquina','Costas'],
  ['remada-cavalinho','Remada cavalinho','Costas'],['pulldown-corda','Pulldown com corda','Costas'],
+ ['kelso-shrug','Kelso shrug (banco inclinado ou máquina)','Costas'],
+ ['y-raise-cabo','Y-raise no cabo (banco inclinado)','Ombros'],['lateral-cabo-costas','Elevação lateral no cabo (por trás das costas)','Ombros'],
+ ['lateral-cabo-deitado','Elevação lateral deitado no cabo','Ombros'],['crucifixo-inverso-cruzado','Crucifixo inverso cruzado no cabo (pegada neutra)','Ombros'],
+ ['cuban-press','Cuban press','Ombros'],['kenan-flaps','Kenan Flaps','Ombros'],['mergulho-banco','Mergulho no banco (bench dips)','Ombros'],
  ['agachamento-sumo-maquina','Agachamento sumô (máquina)','Pernas'],
  ['pulldown-maquina','Pulldown (máquina)','Costas'],['remada-dy-row','Remada DY Row (máquina)','Costas'],['remada-hammer-neutra','Remada Hammer (pegada neutra)','Costas'],
  ['barra-fixa','Barra fixa','Costas'],['levantamento-terra','Levantamento terra','Costas'],
@@ -1792,12 +1803,68 @@ function toggleDone(it, s){
   saveDraft(); render();
 }
 
+// ---------- acervo de artigos ----------
+const artsOf = exId => (S.acervo || []).filter(a => (a.exs || []).includes(exId));
+const safeUrl = u => /^https?:\/\//i.test(u) ? u : '';
+function artCard(a, owner){
+  return el('div',{class:'card pad', style:'margin-bottom:10px'},
+    el('div',{class:'nm', text:a.titulo}),
+    a.nota ? el('div',{class:'mut', style:'font-size:13px;margin-top:6px;line-height:1.45', text:a.nota}) : null,
+    (a.exs || []).length ? el('div',{class:'mut', style:'font-size:12px;margin-top:6px', text:'Exercícios: '+a.exs.map(exNome).join(' · ')}) : null,
+    el('div',{class:'row', style:'gap:14px;margin-top:10px'},
+      safeUrl(a.url) ? el('a',{class:'link', href:safeUrl(a.url), target:'_blank', rel:'noopener noreferrer', text:'Abrir artigo ↗'}) : null,
+      owner ? el('button',{class:'link', style:'color:var(--mut);margin-left:auto', text:'apagar', onclick:() => confirmSheet('Apagar este artigo?', a.titulo, () => w(() => S.db.doc('acervo/'+a.id).delete(), 'Apagado'))}) : null));
+}
+function showArts(exId){ sheet('Por que '+exNome(exId)+'?', el('div',{}, ...artsOf(exId).map(a => artCard(a, false)))); }
+const ACERVO_SEED = [
+  {titulo:'Qual o melhor exercício de ombro? Teste de EMG (BarBend)', url:'https://barbend.com/news/scientifically-best-shoulder-exercise/', nota:'Num teste de EMG, o Y-raise inclinado no cabo ficou em 1º para deltoide medial e anterior juntos. EMG mostra ativação, não prova crescimento.', exs:['y-raise-cabo','lateral-cabo-deitado']},
+  {titulo:'Ranking de exercícios de ombro (Milo Wolf e Mike Israetel)', url:'https://barbend.com/?p=337523', nota:'Lista por biomecânica e eficiência: crucifixo inverso cruzado no cabo (posterior), elevação lateral no cabo por trás das costas (lateral), bench dips (anterior).', exs:['crucifixo-inverso-cruzado','lateral-cabo-costas','mergulho-banco']},
+  {titulo:'Kelso shrug: o que é e como fazer (BoxRox)', url:'https://www.boxrox.com/?p=255008', nota:'Puxa as escápulas uma contra a outra e trabalha sobretudo o trapézio médio. Feito de bruços no banco inclinado ou na máquina com apoio no peito.', exs:['kelso-shrug']},
+  {titulo:'Cuban press e os ombros (BoxRox)', url:'https://www.boxrox.com/?p=227917', nota:'Combina remada alta, rotação externa e press. Pega o manguito rotador (infraespinhal e redondo menor) além dos deltoides.', exs:['cuban-press']},
+  {titulo:'Shrug modificado e os rotadores da escápula (PubMed)', url:'https://pubmed.ncbi.nlm.nih.gov/24342452/', nota:'Estudo em Clinical Biomechanics: o shrug com 30° de abdução ativou mais os músculos escapulares que o shrug padrão.', exs:[]},
+  {titulo:'Como escolher exercícios para hipertrofia (Stronger By Science)', url:'https://www.strongerbyscience.com/?p=61307', nota:'Prefira exercícios mais difíceis na posição alongada do músculo. As diferenças de estabilidade entre exercícios comuns pouco mudam a hipertrofia.', exs:[]},
+  {titulo:'Treinar no alongamento para crescer (Jeremy Ethier e Milo Wolf)', url:'https://barbend.com/news/jeremy-ethier-milo-wolf-training-stretched-position-for-muscle-growth/', nota:'Recomenda descida lenta, pausa de 1 segundo embaixo e subida explosiva.', exs:[]}
+];
+function addArtSheet(){
+  const t = el('input',{placeholder:'Título do artigo', style:'width:100%'});
+  const u = el('input',{placeholder:'Link (https://…)', inputmode:'url', style:'width:100%;margin-top:8px'});
+  const n = el('textarea',{rows:3, placeholder:'Resumo curto, com as suas palavras', style:'margin-top:8px'});
+  let exs = [];
+  const chips = el('div',{class:'chips', style:'margin-top:8px'});
+  const drawChips = () => chips.replaceChildren(...exs.map(id => el('button',{class:'chip on', text:exNome(id)+' ✕', onclick:() => { exs = exs.filter(x => x !== id); drawChips(); }})));
+  const sel = el('select',{style:'width:100%;margin-top:8px'}, el('option',{value:'', text:'Vincular a um exercício…'}),
+    ...exAll().slice().sort((a,b) => a[1].localeCompare(b[1])).map(e => el('option',{value:e[0], text:e[1]})));
+  sel.addEventListener('change', () => { if (sel.value && !exs.includes(sel.value)) exs.push(sel.value); sel.value = ''; drawChips(); });
+  sheet('Novo artigo', el('div',{}, t, u, n, sel, chips,
+    el('button',{class:'btn', style:'margin-top:14px', text:'Salvar', onclick: async () => {
+      if (!t.value.trim()) return toast('Escreva o título');
+      if (!safeUrl(u.value.trim())) return toast('O link precisa começar com https://');
+      if (await w(() => S.db.doc('acervo/'+newId()).set({titulo:t.value.trim().slice(0,160), url:u.value.trim(), nota:n.value.trim().slice(0,500), exs, ts:Date.now()}), 'Artigo salvo ✓')) closeSheet();
+    }})));
+}
+function acervoView(){
+  if (!S.isOwner){ go('logbook'); return el('div'); }
+  const wrap = el('div');
+  wrap.append(el('div',{class:'row', style:'align-items:center;gap:10px'},
+    el('button',{class:'link', text:'← Voltar', onclick:() => go('area')}),
+    el('h2',{text:'Acervo de artigos', style:'margin:0'})));
+  wrap.append(el('div',{class:'mut', style:'margin:8px 2px 12px;line-height:1.45', text:'O aluno vê "Por que este exercício?" no menu do exercício quando houver artigo vinculado.'}));
+  wrap.append(el('button',{class:'btn ghost sm', style:'margin-bottom:12px', text:'＋ Novo artigo', onclick:addArtSheet}));
+  const list = S.acervo || [];
+  if (!list.length) wrap.append(el('button',{class:'btn', style:'width:100%', text:'Adicionar sugestões iniciais ('+ACERVO_SEED.length+' artigos)', onclick: async () => {
+    await w(async () => { let t = Date.now(); for (const a of ACERVO_SEED) await S.db.doc('acervo/'+newId()).set({...a, ts:t--}); }, 'Sugestões adicionadas ✓');
+  }}));
+  for (const a of list) wrap.append(artCard(a, true));
+  return wrap;
+}
+
 function exMenu(d, idx){
   const it = d.itens[idx];
   const b = (t, fn, cls) => el('button',{class:'mitem'+(cls ? ' '+cls : ''), text:t, onclick:() => { closeSheet(); fn(); }});
   const mv = k => { const x = d.itens.splice(idx, 1)[0]; d.itens.splice(idx + k, 0, x); saveDraft(); render(); };
   sheet(exNome(it.ex), el('div',{},
     b('📈 Histórico do exercício', () => exHistory(it.ex, S.sessoes)),
+    artsOf(it.ex).length ? b('🔬 Por que este exercício?', () => showArts(it.ex)) : null,
     idx > 0 ? b('↑ Mover para cima', () => mv(-1)) : null,
     idx < d.itens.length - 1 ? b('↓ Mover para baixo', () => mv(1)) : null,
     S.isOwner ? b(it.uni ? 'Tirar unilateral' : 'Marcar como unilateral', () => { it.uni = !it.uni; saveDraft(); render(); }) : null,
