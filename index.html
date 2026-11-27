@@ -1666,10 +1666,10 @@ const UNI_ARTIC = new Set(['crucifixo-halter','crucifixo-maquina','cross-over','
   'triceps-corda','triceps-barra-polia','triceps-testa','triceps-frances-halter','triceps-coice','triceps-maquina',
   'cadeira-extensora','cadeira-flexora','mesa-flexora','cadeira-abdutora','cadeira-adutora','gluteo-polia','elevacao-pernas',
   'panturrilha-em-pe','panturrilha-sentado']);
-const sugestaoSeries = ex => UNI_ARTIC.has(ex) ? {aq:0, ap:0, sr:3, rmin:8, rmax:12} : {aq:1, ap:1, sr:2, rmin:6, rmax:10};
+const sugestaoSeries = ex => UNI_ARTIC.has(ex) ? {aq:0, ap:0, sr:3, rmin:8, rmax:12, desc:'90s'} : {aq:1, ap:1, sr:2, rmin:6, rmax:10, desc:'90s'};
 function applySplit(d, nome){
   d.nome = nome;
-  d.itens = SPLITS[nome].map(ex => ({ex, nome:exNome(ex), prescr:'', ...sugestaoSeries(ex), desc:'', uni:false}));
+  d.itens = SPLITS[nome].map(ex => ({ex, nome:exNome(ex), prescr:'', ...sugestaoSeries(ex), uni:false}));
   render();
 }
 function openCoach(id, cur){
@@ -2142,7 +2142,7 @@ function addEx(id){
   const d = S.draft; if (!d) return;
   if (S.draftKind === 'coach'){
     if (S.swapIdx != null && d.itens[S.swapIdx]){ d.itens[S.swapIdx] = {...d.itens[S.swapIdx], ex:id, nome:exNome(id), ...sugestaoSeries(id)}; S.swapIdx = null; }
-    else d.itens.push({ex:id, nome:exNome(id), prescr:'', ...sugestaoSeries(id), desc:'', uni:false});
+    else d.itens.push({ex:id, nome:exNome(id), prescr:'', ...sugestaoSeries(id), uni:false});
     S.pickQ = ''; S.pickG = 'Todos'; go('coach'); S.restoreY = null; { const y = S.retY || 0; S.retY = null; S.restoreY = y; render(); } return;
   }
   const last = lastOf(id);
