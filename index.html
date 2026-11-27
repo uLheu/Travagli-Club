@@ -1686,7 +1686,7 @@ function coachBlock(d, it, idx){
   const prep = el('div',{class:'row', style:'gap:10px;margin-top:8px'}, num('aq','Aquecimento'), num('ap','Aproximação (feeder)'));
   const desc = el('input',{placeholder:'Descanso. Ex.: 90s ou 2 min', value: it.desc || '', style:'width:100%;margin-top:8px', oninput: e => { it.desc = e.target.value; }});
   const card = el('div',{class:'card pad ex-blk', style:'margin-top:10px'},
-    el('div',{class:'row', style:'align-items:center'}, dragHandle(d, idx, () => card), el('b',{text: it.nome || exNome(it.ex), style:'flex:1;min-width:0'}),
+    el('div',{class:'row', style:'align-items:center'}, dragHandle(d, idx, () => card), el('b',{text: (idx+1)+'. '+(it.nome || exNome(it.ex)), style:'flex:1;min-width:0'}),
       el('button',{class:'link', style:'margin-left:auto;font-size:13px', text:'trocar', onclick:() => { S.retY = window.scrollY; S.swapIdx = idx; S.pickQ = ''; S.pickG = 'Todos'; go('logpick'); }}),
       el('button',{class:'link', style:'margin-left:14px;color:var(--mut);font-size:13px', text:'remover', onclick:() => { d.itens.splice(idx,1); render(); }})),
     uniBtn, trab, prep, desc, pr);
